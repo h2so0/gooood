@@ -5,9 +5,6 @@ class Product {
   final String imageUrl;
   final int currentPrice;
   final int? previousPrice;
-  final int? lowestEver;
-  final int? highestEver;
-  final int? avgPrice;
   final String mallName;
   final String? brand;
   final String? maker;
@@ -15,7 +12,13 @@ class Product {
   final String? category2;
   final String? category3;
   final String productType;
-  final List<PricePoint> priceHistory;
+  final int? reviewCount;
+  final int? purchaseCount;
+  final double? reviewScore;
+  final int? rank;
+  final bool isDeliveryFree;
+  final bool isArrivalGuarantee;
+  final String? saleEndDate;
 
   Product({
     required this.id,
@@ -24,9 +27,6 @@ class Product {
     required this.imageUrl,
     required this.currentPrice,
     this.previousPrice,
-    this.lowestEver,
-    this.highestEver,
-    this.avgPrice,
     required this.mallName,
     this.brand,
     this.maker,
@@ -34,7 +34,13 @@ class Product {
     this.category2,
     this.category3,
     this.productType = '2',
-    this.priceHistory = const [],
+    this.reviewCount,
+    this.purchaseCount,
+    this.reviewScore,
+    this.rank,
+    this.isDeliveryFree = false,
+    this.isArrivalGuarantee = false,
+    this.saleEndDate,
   });
 
   double get dropRate {
@@ -42,18 +48,9 @@ class Product {
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;
   }
 
-  bool get isAllTimeLow =>
-      lowestEver != null && currentPrice <= lowestEver!;
-
-  bool get isBigDrop => dropRate >= 15;
-
   DealBadge? get badge {
-    if (isAllTimeLow) return DealBadge.allTimeLow;
-    if (dropRate >= 20) return DealBadge.bigDrop;
-    if (dropRate >= 10) return DealBadge.drop;
-    if (avgPrice != null && currentPrice < avgPrice! * 0.9) {
-      return DealBadge.belowAvg;
-    }
+    if (id.startsWith('deal_')) return DealBadge.todayDeal;
+    if (id.startsWith('best_')) return DealBadge.best100;
     return null;
   }
 
@@ -64,7 +61,7 @@ class Product {
     final discountedRatio = (json['discountedRatio'] as num?)?.toInt() ?? 0;
 
     // labelText에서 상점/딜 타입 추출 (줄바꿈 제거)
-    final label = (json['labelText'] as String?)?.replaceAll('\n', ' ')?.trim() ?? '';
+    final label = (json['labelText'] as String?)?.replaceAll('\n', ' ').trim() ?? '';
 
     return Product(
       id: 'deal_${json['productId']?.toString() ?? ''}',
@@ -76,6 +73,37 @@ class Product {
       mallName: label.isNotEmpty ? label : '스마트스토어',
       category1: '오늘의딜',
       productType: '1',
+      reviewScore: (json['averageReviewScore'] as num?)?.toDouble(),
+      reviewCount: (json['totalReviewCount'] as num?)?.toInt(),
+      purchaseCount: (json['cumulationSaleCount'] as num?)?.toInt(),
+      isDeliveryFree: json['isDeliveryFree'] == true,
+      isArrivalGuarantee: json['isArrivalGuarantee'] == true,
+      saleEndDate: json['saleEndDate']?.toString(),
+    );
+  }
+
+  /// 네이버 쇼핑 BEST100 데이터에서 생성
+  factory Product.fromBest100(Map<String, dynamic> json) {
+    final discountPrice = (json['discountPriceValue'] as num?)?.toInt() ?? 0;
+    final originalPrice = (json['priceValue'] as num?)?.toInt() ?? 0;
+    final price = discountPrice > 0 ? discountPrice : originalPrice;
+    final discountRate = int.tryParse(json['discountRate']?.toString() ?? '0') ?? 0;
+
+    return Product(
+      id: 'best_${json['productId']?.toString() ?? ''}',
+      title: json['title'] ?? '',
+      link: json['linkUrl'] ?? '',
+      imageUrl: json['imageUrl'] ?? '',
+      currentPrice: price,
+      previousPrice: discountRate > 0 ? originalPrice : null,
+      mallName: json['mallNm']?.toString() ?? 'BEST100',
+      category1: 'BEST100',
+      productType: '1',
+      reviewCount: int.tryParse(json['reviewCount']?.toString().replaceAll(',', '') ?? ''),
+      reviewScore: double.tryParse(json['reviewScore']?.toString() ?? ''),
+      rank: (json['rank'] as num?)?.toInt(),
+      isDeliveryFree: json['deliveryFeeType'] == 'FREE',
+      isArrivalGuarantee: json['isArrivalGuarantee'] == true,
     );
   }
 
@@ -93,7 +121,6 @@ class Product {
       imageUrl: json['image'] ?? '',
       currentPrice: lprice,
       previousPrice: prev,
-      highestEver: prev,
       mallName: json['mallName'] ?? '',
       brand: json['brand'],
       maker: json['maker'],
@@ -105,18 +132,9 @@ class Product {
   }
 }
 
-class PricePoint {
-  final DateTime date;
-  final int price;
-
-  const PricePoint({required this.date, required this.price});
-}
-
 enum DealBadge {
-  allTimeLow('역대 최저가', '최저'),
-  bigDrop('급락', '급락'),
-  drop('하락', '하락'),
-  belowAvg('평균 이하', '저가');
+  todayDeal('오늘의 특가', '특가'),
+  best100('BEST 100', 'BEST');
 
   final String label;
   final String shortLabel;

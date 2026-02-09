@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import '../models/product.dart';
 
@@ -483,6 +484,119 @@ class NaverShoppingApi {
     return products;
   }
 
+  /// 네이버 쇼핑 BEST100 인기 상품 가져오기 (JSON API)
+  /// sortType: PRODUCT_CLICK(클릭순) 또는 PRODUCT_BUY(구매순)
+  Future<List<Product>> fetchBest100({
+    String sortType = 'PRODUCT_CLICK',
+  }) async {
+    final cacheKey = 'best100|$sortType';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final response = await _client.get(
+      Uri.parse(
+          'https://snxbest.naver.com/api/v1/snxbest/product/rank'
+          '?ageType=ALL&categoryId=A&sortType=$sortType&periodType=DAILY'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://snxbest.naver.com/home',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw NaverApiException(
+          'Best100 API failed: ${response.statusCode}',
+          response.statusCode);
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final rawProducts = (json['products'] as List<dynamic>?) ?? [];
+
+    // 첫 번째 아이템 디버그 로그 (reviewCount, purchaseCount 등 필드 확인)
+    if (rawProducts.isNotEmpty) {
+      developer.log(
+        'Best100 first item keys: ${(rawProducts.first as Map<String, dynamic>).keys.toList()}',
+        name: 'NaverShoppingApi',
+      );
+    }
+
+    final products = <Product>[];
+    for (final item in rawProducts) {
+      if (item is Map<String, dynamic> &&
+          item.containsKey('productId') &&
+          item.containsKey('title')) {
+        products.add(Product.fromBest100(item));
+      }
+    }
+
+    products.sort((a, b) => b.dropRate.compareTo(a.dropRate));
+
+    _cache[cacheKey] = _CacheEntry<List<Product>>(products);
+    return products;
+  }
+
+  /// 네이버 BEST 키워드 랭킹 (순위 변동 포함)
+  Future<List<TrendKeyword>> fetchKeywordRank() async {
+    const cacheKey = 'keywordRank';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<TrendKeyword>;
+    }
+
+    final response = await _client.get(
+      Uri.parse(
+          'https://snxbest.naver.com/api/v1/snxbest/keyword/rank'
+          '?ageType=ALL&categoryId=A&sortType=KEYWORD_NEW&periodType=WEEKLY'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://snxbest.naver.com/home',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw NaverApiException(
+          'Keyword rank API failed: ${response.statusCode}',
+          response.statusCode);
+    }
+
+    final List<dynamic> rawList = jsonDecode(response.body);
+    final keywords = <TrendKeyword>[];
+
+    for (final item in rawList) {
+      if (item is Map<String, dynamic>) {
+        final title = item['title']?.toString() ?? '';
+        if (title.isEmpty) continue;
+        final rank = (item['rank'] as num?)?.toInt() ?? 0;
+        final fluctuation = (item['rankFluctuation'] as num?)?.toInt() ?? 0;
+        final status = item['status']?.toString() ?? 'STABLE';
+
+        // rankFluctuation: 양수=이전보다 순위가 올라감
+        // status: NEW=신규진입, STABLE=변동없음, UP=상승, DOWN=하락
+        int? rankChange;
+        if (status == 'NEW') {
+          rankChange = null; // 신규
+        } else {
+          rankChange = fluctuation;
+        }
+
+        keywords.add(TrendKeyword(
+          keyword: title,
+          ratio: (20 - rank + 1).toDouble(),
+          rankChange: rankChange,
+        ));
+      }
+    }
+
+    _cache[cacheKey] = _CacheEntry<List<TrendKeyword>>(keywords);
+    return keywords;
+  }
+
   void dispose() {
     _client.close();
     _cache.clear();
@@ -498,7 +612,13 @@ class TrendChartPoint {
 class TrendKeyword {
   final String keyword;
   final double ratio;
-  const TrendKeyword({required this.keyword, required this.ratio});
+  /// 순위 변동: 양수=상승, 음수=하락, 0=변동없음, null=신규
+  final int? rankChange;
+  const TrendKeyword({
+    required this.keyword,
+    required this.ratio,
+    this.rankChange,
+  });
 }
 
 class PopularKeyword {
