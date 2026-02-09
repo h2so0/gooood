@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 import '../providers/product_provider.dart';
 import 'product_detail_screen.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialQuery;
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -17,6 +19,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _controller.text = widget.initialQuery!;
+      _query = widget.initialQuery!;
+    }
+  }
 
   static const _fallbackPopular = [
     '냉장고', '노트북', '가습기', '에어프라이어',
@@ -175,16 +186,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onRefresh: () async {
             ref.invalidate(searchResultsProvider(_query));
           },
-          child: GridView.builder(
+          child: MasonryGridView.count(
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.62,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
             itemCount: products.length,
             itemBuilder: (context, i) => ProductGridCard(
               product: products[i],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 import '../providers/product_provider.dart';
@@ -186,8 +187,9 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
 
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.zero,
       children: [
+        const SizedBox(height: 6),
         // ── 인기 검색어 (롤링 바 + 펼치기) ──
         trendKeywords.when(
           data: (keywords) {
@@ -202,7 +204,7 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
 
         // ── 오늘의 핫딜 (그리드) ──
         _sectionTitle(t, '오늘의 핫딜'),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         hotProducts.when(
           data: (products) {
             if (products.isEmpty) {
@@ -215,16 +217,13 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
             }
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GridView.builder(
+              child: MasonryGridView.count(
                 shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.62,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
                 itemCount: products.length,
                 itemBuilder: (context, i) => ProductGridCard(
                   product: products[i],
@@ -250,13 +249,70 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
     );
   }
 
+  void _navigateToSearch(String keyword) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SearchScreen(initialQuery: keyword),
+      ),
+    );
+  }
+
+  Widget _buildRankChange(TteolgaTheme t, int? rankChange) {
+    if (rankChange == null) {
+      // 신규 진입
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF5252).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Text(
+          'NEW',
+          style: TextStyle(
+            color: Color(0xFFFF5252),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+    if (rankChange == 0) {
+      return Text('—',
+          style: TextStyle(color: t.textTertiary, fontSize: 12));
+    }
+    final isUp = rankChange > 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+          color: isUp
+              ? const Color(0xFFFF5252)
+              : const Color(0xFF448AFF),
+          size: 20,
+        ),
+        Text(
+          '${rankChange.abs()}',
+          style: TextStyle(
+            color: isUp
+                ? const Color(0xFFFF5252)
+                : const Color(0xFF448AFF),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildTrendBar(TteolgaTheme t, List<TrendKeyword> keywords) {
     if (_trendExpanded) {
-      // 펼쳐진 상태: 전체 키워드 리스트
+      final items = keywords.take(10).toList();
+
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           decoration: BoxDecoration(
             color: t.card,
             borderRadius: BorderRadius.circular(12),
@@ -267,7 +323,7 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
             children: [
               Row(
                 children: [
-                  Text('인기 검색어',
+                  Text('인기 차트',
                       style: TextStyle(
                           color: t.textPrimary,
                           fontSize: 14,
@@ -280,41 +336,51 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: keywords.take(20).toList().asMap().entries.map((e) {
-                  return GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const SearchScreen()),
+              const SizedBox(height: 12),
+              ...items.asMap().entries.map((e) {
+                final rank = e.key + 1;
+                final kw = e.value;
+
+                return GestureDetector(
+                  onTap: () => _navigateToSearch(kw.keyword),
+                  child: Container(
+                    color: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          child: Text(
+                            '$rank',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: rank <= 3
+                                  ? t.textPrimary
+                                  : t.textTertiary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            kw.keyword,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildRankChange(t, kw.rankChange),
+                      ],
                     ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: t.border, width: 0.5),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('${e.key + 1}',
-                              style: TextStyle(
-                                  color: t.textTertiary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 4),
-                          Text(e.value.keyword,
-                              style: TextStyle(
-                                  color: t.textSecondary, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                );
+              }),
             ],
           ),
         ),
@@ -324,31 +390,41 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
     // 접힌 상태: 한줄 롤링
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: t.card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: t.border, width: 0.5),
-        ),
-        child: Row(
-          children: [
-            Text('인기',
-                style: TextStyle(
-                    color: t.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _RollingKeywords(keywords: keywords),
-            ),
-            GestureDetector(
-              onTap: () => setState(() => _trendExpanded = true),
-              child: Icon(Icons.keyboard_arrow_down,
-                  color: t.textTertiary, size: 20),
-            ),
-          ],
+      child: GestureDetector(
+        onTap: () {
+          if (keywords.isNotEmpty) {
+            _navigateToSearch(keywords.first.keyword);
+          }
+        },
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: t.border, width: 0.5),
+          ),
+          child: Row(
+            children: [
+              Text('인기',
+                  style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _RollingKeywords(
+                  keywords: keywords,
+                  onTap: _navigateToSearch,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _trendExpanded = true),
+                child: Icon(Icons.keyboard_arrow_down,
+                    color: t.textTertiary, size: 20),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -372,7 +448,8 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
 /// 한줄 롤링 인기 검색어
 class _RollingKeywords extends StatefulWidget {
   final List<TrendKeyword> keywords;
-  const _RollingKeywords({required this.keywords});
+  final void Function(String keyword)? onTap;
+  const _RollingKeywords({required this.keywords, this.onTap});
 
   @override
   State<_RollingKeywords> createState() => _RollingKeywordsState();
@@ -402,48 +479,51 @@ class _RollingKeywordsState extends State<_RollingKeywords> {
   Widget build(BuildContext context) {
     if (widget.keywords.isEmpty) return const SizedBox();
     final kw = widget.keywords[_currentIndex];
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.5),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: Row(
-        key: ValueKey(_currentIndex),
-        children: [
-          Text(
-            '${_currentIndex + 1}',
-            style: TextStyle(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white54
-                  : Colors.black38,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: () => widget.onTap?.call(kw.keyword),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.5),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              kw.keyword,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          );
+        },
+        child: Row(
+          key: ValueKey(_currentIndex),
+          children: [
+            Text(
+              '${_currentIndex + 1}',
               style: TextStyle(
                 color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white70
-                    : Colors.black87,
-                fontSize: 13,
+                    ? Colors.white54
+                    : Colors.black38,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                kw.keyword,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white70
+                      : Colors.black87,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -474,17 +554,13 @@ class _CategoryFeed extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(categoryDealsProvider(category));
           },
-          child: GridView.builder(
+          child: MasonryGridView.count(
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.62,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
             itemCount: items.length,
             itemBuilder: (context, i) => ProductGridCard(
               product: items[i],
