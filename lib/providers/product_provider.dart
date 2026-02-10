@@ -124,26 +124,50 @@ final trendChartProvider =
 
 // ── 네이버 쇼핑 실제 핫딜 (오늘끝딜 + 타임딜 + BEST100 병합) ──
 
+/// 크로스 소스 중복 제거용: prefix를 제거한 순수 ID 추출
+/// 네이버 소스(deal_/best_/live_/promo_)와 G마켓/옥션(gmkt_/auction_)은
+/// 같은 상품이 다른 prefix로 존재할 수 있음
+String? _extractRawId(String id) {
+  // 네이버 소스: 같은 productId 공유
+  for (final prefix in ['deal_', 'best_', 'live_', 'promo_']) {
+    if (id.startsWith(prefix)) return 'naver_${id.substring(prefix.length)}';
+  }
+  // G마켓/옥션: 같은 itemNo 공유
+  if (id.startsWith('gmkt_')) return 'gianex_${id.substring(5)}';
+  if (id.startsWith('auction_')) return 'gianex_${id.substring(8)}';
+  return null;
+}
+
 /// 오늘끝딜 + BEST100(클릭순) + BEST100(구매순) 병렬 호출하여 병합
 Future<List<Product>> _fetchAllDeals(NaverShoppingApi api) async {
   final results = await Future.wait([
     api.fetchTodayDeals().catchError((e) { debugPrint('[HotDeal] todayDeals err: $e'); return <Product>[]; }),
     api.fetchBest100(sortType: 'PRODUCT_CLICK').catchError((e) { debugPrint('[HotDeal] clickBest err: $e'); return <Product>[]; }),
     api.fetchBest100(sortType: 'PRODUCT_BUY').catchError((e) { debugPrint('[HotDeal] buyBest err: $e'); return <Product>[]; }),
+    api.fetchShoppingLive().catchError((e) { debugPrint('[HotDeal] shoppingLive err: $e'); return <Product>[]; }),
+    api.fetchNaverPromotions().catchError((e) { debugPrint('[HotDeal] naverPromos err: $e'); return <Product>[]; }),
+    api.fetch11stDeals().catchError((e) { debugPrint('[HotDeal] 11st err: $e'); return <Product>[]; }),
+    api.fetchGmarketDeals().catchError((e) { debugPrint('[HotDeal] gmarket err: $e'); return <Product>[]; }),
+    api.fetchAuctionDeals().catchError((e) { debugPrint('[HotDeal] auction err: $e'); return <Product>[]; }),
   ]);
 
-  debugPrint('[HotDeal] 오늘끝딜=${results[0].length}, 클릭BEST=${results[1].length}, 구매BEST=${results[2].length}');
+  debugPrint('[HotDeal] 오늘끝딜=${results[0].length}, 클릭BEST=${results[1].length}, 구매BEST=${results[2].length}, LIVE=${results[3].length}, 프로모=${results[4].length}, 11번가=${results[5].length}, G마켓=${results[6].length}, 옥션=${results[7].length}');
 
   final all = <Product>[];
   for (final list in results) {
     all.addAll(list);
   }
 
-  // id 기준 중복 제거
+  // 크로스 소스 중복 제거: 네이버 소스(deal_/best_/live_/promo_)는 같은 productId 공유
+  // G마켓/옥션도 같은 itemNo 공유
   final seen = <String>{};
   final unique = all.where((p) {
     if (seen.contains(p.id)) return false;
+    // 네이버 소스: prefix 제거한 순수 productId로 중복 체크
+    final rawId = _extractRawId(p.id);
+    if (rawId != null && seen.contains(rawId)) return false;
     seen.add(p.id);
+    if (rawId != null) seen.add(rawId);
     return true;
   }).toList();
 
@@ -375,11 +399,26 @@ Future<Map<String, String>> _classifyTodayDeals(NaverShoppingApi api) async {
 }
 
 Future<Map<String, String>> _doClassifyTodayDeals(NaverShoppingApi api) async {
-  final deals = await api.fetchTodayDeals(); // 이미 캐시됨
+  // 모든 소스에서 상품을 가져와 카테고리 분류 (Firestore 캐시 → 추가 API 호출 없음)
+  final sources = await Future.wait([
+    api.fetchTodayDeals().catchError((_) => <Product>[]),
+    api.fetchShoppingLive().catchError((_) => <Product>[]),
+    api.fetchNaverPromotions().catchError((_) => <Product>[]),
+    api.fetch11stDeals().catchError((_) => <Product>[]),
+    api.fetchGmarketDeals().catchError((_) => <Product>[]),
+    api.fetchAuctionDeals().catchError((_) => <Product>[]),
+  ]);
+
+  final allProducts = sources.expand((l) => l).toList();
   final result = <String, String>{};
 
   // 로컬 키워드 매칭으로 분류 (API 호출 0회)
-  for (final p in deals) {
+  for (final p in allProducts) {
+    // 프로모션은 그대로 "프로모션"
+    if (p.id.startsWith('promo_')) {
+      result[p.id] = '프로모션';
+      continue;
+    }
     // 1차: 네이버 카테고리 정보가 있으면 활용
     final cat = _mapToAppCategory(p.category1, p.category2, p.category3);
     if (cat != null) {
@@ -393,7 +432,8 @@ Future<Map<String, String>> _doClassifyTodayDeals(NaverShoppingApi api) async {
     }
   }
 
-  debugPrint('[Category] 오늘끝딜 분류: ${result.length}/${deals.length}');
+  debugPrint('[Category] 전체 분류: ${result.length}/${allProducts.length} '
+      '(딜=${sources[0].length}, 라이브=${sources[1].length}, 프로모=${sources[2].length}, 11st=${sources[3].length}, gmkt=${sources[4].length}, auction=${sources[5].length})');
   _dealCatCache..clear()..addAll(result);
   _dealCatCacheTime = DateTime.now();
   return result;
@@ -414,14 +454,24 @@ final categoryDealsProvider =
       best100 = await api.fetchBest100(categoryId: catId);
     }
 
-    // 2. 오늘끝딜 중 해당 카테고리 상품 추가 (~14회 호출, 캐시됨)
-    final todayDeals = await api.fetchTodayDeals();
+    // 2. 전체 소스에서 해당 카테고리 상품 추출 (모두 캐시됨)
     final dealCategories = await _classifyTodayDeals(api);
-    final matchingDeals = todayDeals
-        .where((p) => dealCategories[p.id] == category && p.dropRate > 0)
+    final allSources = await Future.wait([
+      api.fetchTodayDeals().catchError((_) => <Product>[]),
+      api.fetchShoppingLive().catchError((_) => <Product>[]),
+      api.fetchNaverPromotions().catchError((_) => <Product>[]),
+      api.fetch11stDeals().catchError((_) => <Product>[]),
+      api.fetchGmarketDeals().catchError((_) => <Product>[]),
+      api.fetchAuctionDeals().catchError((_) => <Product>[]),
+    ]);
+    final allProducts = allSources.expand((l) => l).toList();
+    final matchingDeals = allProducts
+        .where((p) =>
+            dealCategories[p.id] == category &&
+            p.dropRate > 0)
         .toList();
 
-    // 3. 병합 (오늘끝딜 상단, 중복 제거) + 구간 셔플
+    // 3. 병합 (매칭 상품 상단, 중복 제거) + 구간 셔플
     final seen = best100.map((p) => p.id).toSet();
     final merged = [
       ...matchingDeals.where((p) => !seen.contains(p.id)),

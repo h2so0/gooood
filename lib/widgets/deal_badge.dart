@@ -35,6 +35,16 @@ class DealBadgeWidget extends ConsumerWidget {
         return (const Color(0xFFFF3B30), Colors.white);
       case DealBadge.best100:
         return (const Color(0xFF007AFF), Colors.white);
+      case DealBadge.shoppingLive:
+        return (const Color(0xFF00C853), Colors.white);
+      case DealBadge.naverPromo:
+        return (const Color(0xFF8E24AA), Colors.white);
+      case DealBadge.st11:
+        return (const Color(0xFFFF0038), Colors.white);
+      case DealBadge.gmarket:
+        return (const Color(0xFF00A650), Colors.white);
+      case DealBadge.auction:
+        return (const Color(0xFFE53238), Colors.white);
     }
   }
 }

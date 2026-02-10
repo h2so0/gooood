@@ -97,6 +97,11 @@ class Product {
   DealBadge? get badge {
     if (id.startsWith('deal_')) return DealBadge.todayDeal;
     if (id.startsWith('best_')) return DealBadge.best100;
+    if (id.startsWith('live_')) return DealBadge.shoppingLive;
+    if (id.startsWith('promo_')) return DealBadge.naverPromo;
+    if (id.startsWith('11st_')) return DealBadge.st11;
+    if (id.startsWith('gmkt_')) return DealBadge.gmarket;
+    if (id.startsWith('auction_')) return DealBadge.auction;
     return null;
   }
 
@@ -180,7 +185,12 @@ class Product {
 
 enum DealBadge {
   todayDeal('오늘의 특가', '특가'),
-  best100('BEST 100', 'BEST');
+  best100('BEST 100', 'BEST'),
+  shoppingLive('쇼핑라이브', 'LIVE'),
+  naverPromo('네이버 프로모션', '프로모션'),
+  st11('11번가', '11번가'),
+  gmarket('G마켓', 'G마켓'),
+  auction('옥션', '옥션');
 
   final String label;
   final String shortLabel;

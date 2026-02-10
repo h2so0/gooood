@@ -304,6 +304,494 @@ async function fetchPopularKeywords(
 }
 
 // ──────────────────────────────────────────
+// 새 데이터 소스 수집
+// ──────────────────────────────────────────
+
+const COMMON_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+};
+
+async function fetchShoppingLive(): Promise<ProductJson[]> {
+  const res = await fetch("https://shoppinglive.naver.com/home", {
+    headers: COMMON_HEADERS,
+  });
+  if (!res.ok) return [];
+
+  const html = await res.text();
+
+  // __NEXT_DATA__를 indexOf로 추출
+  let startMarker = '<script id="__NEXT_DATA__" type="application/json">';
+  let startIdx = html.indexOf(startMarker);
+  if (startIdx === -1) {
+    // 속성 순서가 다를 수 있음
+    const altIdx = html.indexOf("__NEXT_DATA__");
+    if (altIdx !== -1) {
+      const tagEnd = html.indexOf(">", altIdx);
+      if (tagEnd !== -1) {
+        const tagStart = html.lastIndexOf("<script", altIdx);
+        startMarker = html.substring(tagStart, tagEnd + 1);
+        startIdx = tagStart;
+      }
+    }
+    if (startIdx === -1) return [];
+  }
+  const jsonStart = startIdx + startMarker.length;
+  const endIdx = html.indexOf("</script>", jsonStart);
+  if (endIdx === -1) return [];
+  const jsonStr = html.substring(jsonStart, endIdx);
+
+  const nextData = JSON.parse(jsonStr);
+  const trendingLives =
+    nextData?.props?.pageProps?.initialRecoilState?.trendingLives ?? [];
+
+  const products: ProductJson[] = [];
+
+  for (const live of trendingLives) {
+    // ONAIR 또는 STANDBY 방송만
+    const status = live.status || "";
+    if (status !== "ONAIR" && status !== "STANDBY") continue;
+
+    const liveProducts = live.products ?? [];
+    const channelName = live.channelName || "쇼핑라이브";
+    const liveTitle = live.title || "";
+    const broadcastId = live.broadcastId || "";
+
+    for (const prod of liveProducts) {
+      const name = prod.name || "";
+      if (!name) continue;
+
+      const price = Number(prod.price) || 0;
+      const discountRate = Number(prod.discountRate) || 0;
+      const originalPrice =
+        discountRate > 0 && price > 0
+          ? Math.round(price / (1 - discountRate / 100))
+          : null;
+
+      if (price <= 0) continue;
+
+      const productId =
+        prod.productId || prod.id || `${broadcastId}_${name.slice(0, 10)}`;
+
+      products.push({
+        id: `live_${productId}`,
+        title: name,
+        link:
+          prod.linkUrl ||
+          `https://shoppinglive.naver.com/lives/${broadcastId}`,
+        imageUrl: prod.imageUrl || live.standByThumbnailImageUrl || "",
+        currentPrice: price,
+        previousPrice: originalPrice,
+        mallName: `${channelName}`,
+        brand: null,
+        maker: null,
+        category1: "쇼핑라이브",
+        category2: liveTitle,
+        category3: null,
+        productType: "1",
+        reviewScore: null,
+        reviewCount: null,
+        purchaseCount: live.orderMemberCount
+          ? Number(live.orderMemberCount)
+          : null,
+        rank: null,
+        isDeliveryFree: prod.deliveryFee === 0 || prod.deliveryFee === "0",
+        isArrivalGuarantee: false,
+        saleEndDate: null,
+      });
+    }
+  }
+
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+  return products;
+}
+
+async function fetchNaverPromotions(): Promise<ProductJson[]> {
+  // 1. 프로모션 페이지에서 탭 목록 추출
+  const pageRes = await fetch("https://shopping.naver.com/promotion", {
+    headers: COMMON_HEADERS,
+  });
+  if (!pageRes.ok) return [];
+
+  const html = await pageRes.text();
+  const match = html.match(
+    /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
+  );
+  if (!match) return [];
+
+  const nextData = JSON.parse(match[1]);
+  const pageProps = nextData?.props?.pageProps;
+  if (!pageProps) return [];
+
+  // dehydratedState에서 탭 목록 추출
+  const queries = pageProps?.dehydratedState?.queries ?? [];
+  let tabList: any[] = [];
+  for (const q of queries) {
+    const key = q?.queryKey?.[0] || "";
+    if (key.toLowerCase().includes("tab") || key.toLowerCase().includes("promotion")) {
+      const data = q?.state?.data;
+      if (Array.isArray(data) && data.length > 0) {
+        tabList = data;
+        break;
+      }
+    }
+  }
+  // fallback: pageProps.tabList
+  if (tabList.length === 0) {
+    tabList = pageProps?.tabList ?? [];
+  }
+
+  // WAFFLE 타입 탭의 UID 수집 (첫 번째 = 스페셜딜 = todayDeals 중복이므로 제외)
+  const waffleUids: { uid: string; name: string }[] = [];
+  let isFirst = true;
+  for (const tab of tabList) {
+    const tabType = tab.tabType ?? tab.type ?? "";
+    const uid = tab.uid ?? tab.promotionUid ?? "";
+    const name = tab.title ?? tab.tabTitle ?? tab.name ?? "";
+    if (tabType !== "WAFFLE") continue;
+    if (!uid) continue;
+    // 첫 번째 WAFFLE 탭 = todayDeals와 중복 → 제외
+    if (isFirst) {
+      isFirst = false;
+      continue;
+    }
+    waffleUids.push({ uid, name });
+  }
+
+  console.log(
+    `[Promo] ${waffleUids.length} promo tabs: ${waffleUids.map((u) => u.name).join(", ")}`
+  );
+
+  // 2. 각 탭의 Waffle API로 상품 데이터 가져오기
+  const products: ProductJson[] = [];
+  const seenIds = new Set<string>();
+
+  for (const { uid, name } of waffleUids) {
+    try {
+      const dataRes = await fetch(
+        `https://shopping.naver.com/api/waffle/v1/waffle-maker/data/pages/${uid}`,
+        {
+          headers: {
+            ...COMMON_HEADERS,
+            Accept: "application/json",
+            Referer: "https://shopping.naver.com/promotion",
+          },
+        }
+      );
+      if (!dataRes.ok) {
+        console.log(`[Promo] Tab "${name}" API ${dataRes.status}`);
+        continue;
+      }
+
+      const data = (await dataRes.json()) as any;
+      const layers = data?.layers ?? [];
+
+      let tabCount = 0;
+      for (const layer of layers) {
+        for (const block of layer.blocks ?? []) {
+          for (const item of block.items ?? []) {
+            for (const content of item.contents ?? []) {
+              if (!content.productId || !content.salePrice) continue;
+              if (content.isSoldOut || content.isRental) continue;
+
+              const pid = content.productId.toString();
+              if (seenIds.has(pid)) continue;
+              seenIds.add(pid);
+
+              const salePrice = Number(content.salePrice) || 0;
+              const discountedPrice =
+                Number(content.discountedPrice) || salePrice;
+              const discountedRatio =
+                Number(content.discountedRatio) || 0;
+              const currentPrice =
+                discountedRatio > 0 ? discountedPrice : salePrice;
+              const previousPrice =
+                discountedRatio > 0 ? salePrice : null;
+
+              if (currentPrice <= 0) continue;
+
+              const label = (content.labelText || "")
+                .replace(/\n/g, " ")
+                .trim();
+
+              products.push({
+                id: `promo_${pid}`,
+                title: content.name || "",
+                link: content.landingUrl || "",
+                imageUrl: content.imageUrl || "",
+                currentPrice,
+                previousPrice,
+                mallName: label || name || "네이버 프로모션",
+                brand: null,
+                maker: null,
+                category1: "프로모션",
+                category2: name || null,
+                category3: null,
+                productType: "1",
+                reviewScore: content.averageReviewScore
+                  ? Number(content.averageReviewScore)
+                  : null,
+                reviewCount: content.totalReviewCount
+                  ? Number(content.totalReviewCount)
+                  : null,
+                purchaseCount: content.cumulationSaleCount
+                  ? Number(content.cumulationSaleCount)
+                  : null,
+                rank: null,
+                isDeliveryFree: content.isDeliveryFree === true,
+                isArrivalGuarantee: content.isArrivalGuarantee === true,
+                saleEndDate: content.saleEndDate || null,
+              });
+              tabCount++;
+            }
+          }
+        }
+      }
+      console.log(`[Promo] Tab "${name}": ${tabCount} products`);
+    } catch (e) {
+      console.error(`[Promo] Tab "${name}" error:`, e);
+    }
+    await sleep(300);
+  }
+
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+  return products;
+}
+
+// ──────────────────────────────────────────
+// 외부 커머스 데이터 수집
+// ──────────────────────────────────────────
+
+async function fetch11stDeals(): Promise<ProductJson[]> {
+  const res = await fetch(
+    "https://apis.11st.co.kr/pui/v2/page?pageId=PCHOMEHOME",
+    { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+  );
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as any;
+  const carriers = data?.data ?? [];
+  const DEAL_TYPES = [
+    "PC_Product_Deal_Focus",
+    "PC_Product_Deal_Time",
+    "PC_Product_Deal_Emergency",
+    "PC_Product_Deal_Shooting",
+  ];
+
+  const products: ProductJson[] = [];
+  const seenIds = new Set<string>();
+
+  for (const carrier of carriers) {
+    for (const block of carrier.blockList ?? []) {
+      if (!DEAL_TYPES.includes(block.type)) continue;
+      for (const item of block.list ?? []) {
+        const prdNo = item.prdNo?.toString();
+        if (!prdNo || seenIds.has(prdNo)) continue;
+        seenIds.add(prdNo);
+
+        const sellPrice =
+          parseInt((item.sellPrice || "0").replace(/,/g, ""), 10) || 0;
+        const finalPrice =
+          parseInt((item.finalDscPrice || "0").replace(/,/g, ""), 10) || 0;
+        const discRate = parseInt(item.discountRate || "0", 10) || 0;
+        const currentPrice = finalPrice > 0 ? finalPrice : sellPrice;
+        const previousPrice = discRate > 0 && sellPrice > currentPrice ? sellPrice : null;
+
+        if (currentPrice <= 0) continue;
+
+        let imgUrl = item.imageUrl1 || "";
+        if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+        // 720x360 배너 → 400x400 정사각형으로 변경
+        imgUrl = imgUrl.replace(/resize\/\d+x\d+/, "resize/400x400");
+
+        products.push({
+          id: `11st_${prdNo}`,
+          title: item.title1 || "",
+          link: item.linkUrl1 || `https://www.11st.co.kr/products/${prdNo}`,
+          imageUrl: imgUrl,
+          currentPrice,
+          previousPrice,
+          mallName: "11번가",
+          brand: null,
+          maker: null,
+          category1: "11번가",
+          category2: block.type.replace("PC_Product_Deal_", ""),
+          category3: null,
+          productType: "1",
+          reviewScore: null,
+          reviewCount: null,
+          purchaseCount: item.selQty
+            ? parseInt((item.selQty || "0").replace(/,/g, ""), 10) || null
+            : null,
+          rank: null,
+          isDeliveryFree: JSON.stringify(item.benefit ?? {}).includes("무료배송"),
+          isArrivalGuarantee: false,
+          saleEndDate: item.displayEndDate
+            ? item.displayEndDate.replace(
+                /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/,
+                "$1-$2-$3T$4:$5:$6"
+              )
+            : null,
+        });
+      }
+    }
+  }
+
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+  console.log(`[11st] ${products.length} deals fetched`);
+  return products;
+}
+
+async function fetchGmarketDeals(): Promise<ProductJson[]> {
+  const BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
+  const products: ProductJson[] = [];
+  const seenIds = new Set<string>();
+
+  // 슈퍼딜 (sectionSeq=2) 최대 3페이지
+  for (let page = 1; page <= 3; page++) {
+    try {
+      const res = await fetch(
+        `${BASE}?sectionSeq=2&pageTypeSeq=1&pagingNumber=${page}`,
+        { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+      );
+      if (!res.ok) break;
+      const data = (await res.json()) as any;
+
+      for (const mod of data.modules ?? []) {
+        for (const tab of mod.tabs ?? []) {
+          for (const item of tab.components ?? []) {
+            const itemNo = item.itemNo?.toString();
+            if (!itemNo || seenIds.has(itemNo)) continue;
+            seenIds.add(itemNo);
+
+            const salePrice = Number(item.itemPrice) || 0;
+            const origPrice = Number(item.sellPrice) || 0;
+            const discRate = Number(item.discountRate) || 0;
+            if (salePrice <= 0) continue;
+
+            let imgUrl = item.imageUrl || "";
+            if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+
+            // API가 제공하는 URL 사용 (트래킹 파라미터만 제거)
+            let itemLink = item.itemUrl || "";
+            itemLink = itemLink.split("&utparam-url=")[0];
+            if (!itemLink) itemLink = `https://m.gmarket.co.kr/n/superdeal?goodsCode=${itemNo}`;
+
+            products.push({
+              id: `gmkt_${itemNo}`,
+              title: item.itemName || "",
+              link: itemLink,
+              imageUrl: imgUrl,
+              currentPrice: salePrice,
+              previousPrice: discRate > 0 && origPrice > salePrice ? origPrice : null,
+              mallName: "G마켓",
+              brand: null,
+              maker: null,
+              category1: "G마켓",
+              category2: null,
+              category3: null,
+              productType: "1",
+              reviewScore: item.reviewPoint?.starPoint
+                ? Number(item.reviewPoint.starPoint)
+                : null,
+              reviewCount: item.reviewPoint?.reviewCount
+                ? Number(item.reviewPoint.reviewCount)
+                : null,
+              purchaseCount: null,
+              rank: null,
+              isDeliveryFree: item.isFreeShipping === true,
+              isArrivalGuarantee: false,
+              saleEndDate: item.superDealDispInfo?.dispEndDt || null,
+            });
+          }
+        }
+      }
+
+      if (!data.hasNext) break;
+      await sleep(300);
+    } catch (e) {
+      console.error(`[Gmarket] page ${page} error:`, e);
+      break;
+    }
+  }
+
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+  console.log(`[Gmarket] ${products.length} deals fetched`);
+  return products;
+}
+
+async function fetchAuctionDeals(): Promise<ProductJson[]> {
+  // 옥션/G마켓 공유 백엔드 — 동일 API, 별도 sectionSeq 또는 같은 상품을 옥션 링크로
+  const BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
+  const products: ProductJson[] = [];
+  const seenIds = new Set<string>();
+
+  // sectionSeq=1037 (베스트) — 옥션 베스트 상품
+  try {
+    const res = await fetch(
+      `${BASE}?sectionSeq=1037&pageTypeSeq=1&pagingNumber=1`,
+      { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+    );
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      for (const mod of data.modules ?? []) {
+        for (const tab of mod.tabs ?? []) {
+          for (const item of tab.components ?? []) {
+            const itemNo = item.itemNo?.toString();
+            if (!itemNo || seenIds.has(itemNo)) continue;
+            seenIds.add(itemNo);
+
+            const salePrice = Number(item.itemPrice) || 0;
+            const origPrice = Number(item.sellPrice) || 0;
+            const discRate = Number(item.discountRate) || 0;
+            if (salePrice <= 0) continue;
+
+            let imgUrl = item.imageUrl || "";
+            if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+
+            // 옥션 모바일 상품 링크 (브라우저에서 자동 리다이렉트)
+            const auctionLink = `https://m.auction.co.kr/ItemDetail?itemno=${itemNo}`;
+
+            products.push({
+              id: `auction_${itemNo}`,
+              title: item.itemName || "",
+              link: auctionLink,
+              imageUrl: imgUrl,
+              currentPrice: salePrice,
+              previousPrice: discRate > 0 && origPrice > salePrice ? origPrice : null,
+              mallName: "옥션",
+              brand: null,
+              maker: null,
+              category1: "옥션",
+              category2: null,
+              category3: null,
+              productType: "1",
+              reviewScore: item.reviewPoint?.starPoint
+                ? Number(item.reviewPoint.starPoint)
+                : null,
+              reviewCount: item.reviewPoint?.reviewCount
+                ? Number(item.reviewPoint.reviewCount)
+                : null,
+              purchaseCount: null,
+              rank: null,
+              isDeliveryFree: item.isFreeShipping === true,
+              isArrivalGuarantee: false,
+              saleEndDate: item.superDealDispInfo?.dispEndDt || null,
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[Auction] error:", e);
+  }
+
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+  console.log(`[Auction] ${products.length} deals fetched`);
+  return products;
+}
+
+// ──────────────────────────────────────────
 // 카테고리 매칭 (알림용)
 // ──────────────────────────────────────────
 
@@ -579,6 +1067,88 @@ export const syncKeywords = onSchedule(
 );
 
 /**
+ * syncShoppingLive: 10분마다
+ * - 네이버 쇼핑라이브 상품 → Firestore 캐시
+ */
+export const syncShoppingLive = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 60,
+  },
+  async () => {
+    try {
+      const products = await fetchShoppingLive();
+      await writeCache("shoppingLive", products);
+      console.log(`Cached shoppingLive: ${products.length} products`);
+    } catch (e) {
+      console.error("Failed shoppingLive:", e);
+    }
+  }
+);
+
+/**
+ * syncPromotions: 30분마다
+ * - 네이버 프로모션 (스페셜딜/브랜드데이) → Firestore 캐시
+ */
+export const syncPromotions = onSchedule(
+  {
+    schedule: "every 30 minutes",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 60,
+  },
+  async () => {
+    try {
+      const promos = await fetchNaverPromotions();
+      await writeCache("naverPromotions", promos);
+      console.log(`Cached naverPromotions: ${promos.length} products`);
+    } catch (e) {
+      console.error("Failed naverPromotions:", e);
+    }
+  }
+);
+
+/**
+ * syncExternalDeals: 15분마다
+ * - 11번가, G마켓, 옥션 딜 → Firestore 캐시
+ */
+export const syncExternalDeals = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    try {
+      const st = await fetch11stDeals();
+      await writeCache("11stDeals", st);
+      console.log(`Cached 11stDeals: ${st.length}`);
+    } catch (e) {
+      console.error("Failed 11stDeals:", e);
+    }
+    await sleep(1000);
+    try {
+      const gm = await fetchGmarketDeals();
+      await writeCache("gmarketDeals", gm);
+      console.log(`Cached gmarketDeals: ${gm.length}`);
+    } catch (e) {
+      console.error("Failed gmarketDeals:", e);
+    }
+    await sleep(1000);
+    try {
+      const au = await fetchAuctionDeals();
+      await writeCache("auctionDeals", au);
+      console.log(`Cached auctionDeals: ${au.length}`);
+    } catch (e) {
+      console.error("Failed auctionDeals:", e);
+    }
+  }
+);
+
+/**
  * dailyBest: 매일 오전 9시
  * - 캐시에서 TOP 5 → dailyBest 토픽 알림
  */
@@ -681,7 +1251,52 @@ export const manualSync = onRequest(
       results.push(`keywordRank: ERROR ${e}`);
     }
 
-    // ④ 인기 검색어
+    // ④ 쇼핑라이브
+    try {
+      const live = await fetchShoppingLive();
+      await writeCache("shoppingLive", live);
+      results.push(`shoppingLive: ${live.length}`);
+    } catch (e) {
+      results.push(`shoppingLive: ERROR ${e}`);
+    }
+
+    // ⑤ 네이버 프로모션
+    try {
+      const promos = await fetchNaverPromotions();
+      await writeCache("naverPromotions", promos);
+      results.push(`naverPromotions: ${promos.length}`);
+    } catch (e) {
+      results.push(`naverPromotions: ERROR ${e}`);
+    }
+
+    // ⑥ 11번가
+    try {
+      const st = await fetch11stDeals();
+      await writeCache("11stDeals", st);
+      results.push(`11stDeals: ${st.length}`);
+    } catch (e) {
+      results.push(`11stDeals: ERROR ${e}`);
+    }
+
+    // ⑦ G마켓
+    try {
+      const gm = await fetchGmarketDeals();
+      await writeCache("gmarketDeals", gm);
+      results.push(`gmarketDeals: ${gm.length}`);
+    } catch (e) {
+      results.push(`gmarketDeals: ERROR ${e}`);
+    }
+
+    // ⑧ 옥션
+    try {
+      const au = await fetchAuctionDeals();
+      await writeCache("auctionDeals", au);
+      results.push(`auctionDeals: ${au.length}`);
+    } catch (e) {
+      results.push(`auctionDeals: ERROR ${e}`);
+    }
+
+    // ⑨ 인기 검색어
     for (const [name, id] of Object.entries(CATEGORY_MAP)) {
       try {
         const keywords = await fetchPopularKeywords(id, name);

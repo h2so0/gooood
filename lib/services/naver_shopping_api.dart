@@ -578,6 +578,91 @@ class NaverShoppingApi {
     return products;
   }
 
+  /// 네이버 쇼핑라이브 상품 (Firestore 캐시)
+  Future<List<Product>> fetchShoppingLive() async {
+    const cacheKey = 'shoppingLive';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final firestore = await _firestoreProducts('shoppingLive');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    return [];
+  }
+
+  /// 네이버 프로모션 (Firestore 캐시)
+  Future<List<Product>> fetchNaverPromotions() async {
+    const cacheKey = 'naverPromotions';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final firestore = await _firestoreProducts('naverPromotions');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    return [];
+  }
+
+  /// 11번가 딜 (Firestore 캐시)
+  Future<List<Product>> fetch11stDeals() async {
+    const cacheKey = '11stDeals';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final firestore = await _firestoreProducts('11stDeals');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    return [];
+  }
+
+  /// G마켓 슈퍼딜 (Firestore 캐시)
+  Future<List<Product>> fetchGmarketDeals() async {
+    const cacheKey = 'gmarketDeals';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final firestore = await _firestoreProducts('gmarketDeals');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    return [];
+  }
+
+  /// 옥션 딜 (Firestore 캐시)
+  Future<List<Product>> fetchAuctionDeals() async {
+    const cacheKey = 'auctionDeals';
+    final cached = _cache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+
+    final firestore = await _firestoreProducts('auctionDeals');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    return [];
+  }
+
   /// 네이버 BEST 키워드 랭킹 (순위 변동 포함)
   Future<List<TrendKeyword>> fetchKeywordRank() async {
     const cacheKey = 'keywordRank';
