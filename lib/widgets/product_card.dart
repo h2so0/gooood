@@ -1,21 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../theme/app_theme.dart';
-import '../utils/image_helper.dart';
+import '../utils/formatters.dart';
 import 'deal_badge.dart';
+import 'product_image.dart';
 
 /// 그리드형 상품 카드 (카테고리/검색 결과용)
-/// 상점명(좌측) → 상품명 2줄(좌측) → 할인율(빨간박스 흰텍스트) + 금액(우측)
 class ProductGridCard extends ConsumerWidget {
   final Product product;
   final VoidCallback? onTap;
 
   const ProductGridCard({super.key, required this.product, this.onTap});
-
-  static final _fmt = NumberFormat('#,###', 'ko_KR');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -42,27 +38,12 @@ class ProductGridCard extends ConsumerWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    product.imageUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: proxyImage(product.imageUrl),
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) =>
-                                Container(color: t.surface),
-                            errorWidget: (_, __, ___) => Container(
-                              color: t.surface,
-                              child: Center(
-                                child: Icon(Icons.shopping_bag_outlined,
-                                    color: t.textTertiary, size: 28),
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: t.surface,
-                            child: Center(
-                              child: Icon(Icons.shopping_bag_outlined,
-                                  color: t.textTertiary, size: 28),
-                            ),
-                          ),
+                    ProductImage(
+                      imageUrl: product.imageUrl,
+                      fit: BoxFit.cover,
+                      errorIcon: Icons.shopping_bag_outlined,
+                      errorIconSize: 28,
+                    ),
                     if (product.badge != null)
                       Positioned(
                         top: 8,
@@ -73,7 +54,7 @@ class ProductGridCard extends ConsumerWidget {
                 ),
               ),
             ),
-            // 상점명 (이미지 바로 아래, 간격 없음)
+            // 상점명
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
               child: Column(
@@ -88,7 +69,6 @@ class ProductGridCard extends ConsumerWidget {
                           color: t.textTertiary, fontSize: 11),
                     ),
                   const SizedBox(height: 2),
-                  // 상품명 2줄 (좌측 정렬)
                   Text(
                     product.title,
                     maxLines: 2,
@@ -100,7 +80,6 @@ class ProductGridCard extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // 할인율(빨간박스 흰텍스트) + 금액
                   Row(
                     children: [
                       if (product.dropRate > 0) ...[
@@ -124,7 +103,7 @@ class ProductGridCard extends ConsumerWidget {
                       ],
                       Flexible(
                         child: Text(
-                          '${_fmt.format(product.currentPrice)}원',
+                          formatPrice(product.currentPrice),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

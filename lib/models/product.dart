@@ -89,6 +89,52 @@ class Product {
     saleEndDate: json['saleEndDate']?.toString(),
   );
 
+  Product copyWith({
+    String? id,
+    String? title,
+    String? link,
+    String? imageUrl,
+    int? currentPrice,
+    int? previousPrice,
+    String? mallName,
+    String? brand,
+    String? maker,
+    String? category1,
+    String? category2,
+    String? category3,
+    String? productType,
+    int? reviewCount,
+    int? purchaseCount,
+    double? reviewScore,
+    int? rank,
+    bool? isDeliveryFree,
+    bool? isArrivalGuarantee,
+    String? saleEndDate,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      link: link ?? this.link,
+      imageUrl: imageUrl ?? this.imageUrl,
+      currentPrice: currentPrice ?? this.currentPrice,
+      previousPrice: previousPrice ?? this.previousPrice,
+      mallName: mallName ?? this.mallName,
+      brand: brand ?? this.brand,
+      maker: maker ?? this.maker,
+      category1: category1 ?? this.category1,
+      category2: category2 ?? this.category2,
+      category3: category3 ?? this.category3,
+      productType: productType ?? this.productType,
+      reviewCount: reviewCount ?? this.reviewCount,
+      purchaseCount: purchaseCount ?? this.purchaseCount,
+      reviewScore: reviewScore ?? this.reviewScore,
+      rank: rank ?? this.rank,
+      isDeliveryFree: isDeliveryFree ?? this.isDeliveryFree,
+      isArrivalGuarantee: isArrivalGuarantee ?? this.isArrivalGuarantee,
+      saleEndDate: saleEndDate ?? this.saleEndDate,
+    );
+  }
+
   double get dropRate {
     if (previousPrice == null || previousPrice == 0) return 0;
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;

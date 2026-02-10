@@ -127,6 +127,13 @@ class TteolgaTheme {
   }
 }
 
+/// 카드 데코레이션 헬퍼 (settings_screen 등에서 공용)
+BoxDecoration cardDecoration(TteolgaTheme t) => BoxDecoration(
+  color: t.card,
+  borderRadius: BorderRadius.circular(16),
+  border: Border.all(color: t.border, width: 0.5),
+);
+
 /// Access current theme colors from anywhere via ref
 final tteolgaThemeProvider = Provider<TteolgaTheme>((ref) {
   final mode = ref.watch(themeModeProvider);
