@@ -168,6 +168,12 @@ class NotificationService {
   Future<void> subscribeInitialTopics() async {
     if (kIsWeb) return;
 
+    // iOS 시뮬레이터는 APNS를 지원하지 않으므로 토큰 확인 후 구독
+    final apnsToken = await _messaging.getAPNSToken();
+    if (defaultTargetPlatform == TargetPlatform.iOS && apnsToken == null) {
+      return;
+    }
+
     // 기본값: hotDeal ON, saleEnd ON, dailyBest OFF
     // notification_provider가 로드된 후 _syncTopics에서 정확히 동기화됨
     // 여기서는 최소한의 기본 구독만

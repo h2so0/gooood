@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
-import 'screens/main_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,7 +36,7 @@ class TteolgaApp extends ConsumerWidget {
       title: '굿딜',
       debugShowCheckedModeBanner: false,
       theme: t.toThemeData(),
-      home: const MainScreen(),
+      home: const SplashScreen(),
     );
   }
 }
