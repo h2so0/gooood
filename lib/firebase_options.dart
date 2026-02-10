@@ -57,7 +57,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCDVaxfUfGISyUzgbdnXkYWlj3QcX4Kr3Y',
-    appId: '1:166028945866:android:1ad76354ce4415a1980733',
+    appId: '1:166028945866:android:6b24ccf5450ba32d980733',
     messagingSenderId: '166028945866',
     projectId: 'gooddeal-app',
     storageBucket: 'gooddeal-app.firebasestorage.app',
@@ -65,10 +65,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBP5Cn5F5zaRlZ9yBACBfvLRm-rmd3-OFA',
-    appId: '1:166028945866:ios:d5cdf1a258be846f980733',
+    appId: '1:166028945866:ios:6aa9a9e316749348980733',
     messagingSenderId: '166028945866',
     projectId: 'gooddeal-app',
     storageBucket: 'gooddeal-app.firebasestorage.app',
-    iosBundleId: 'com.gooddeal.app',
+    iosBundleId: 'com.goooood.app',
   );
 }

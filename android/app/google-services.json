@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:166028945866:android:1ad76354ce4415a1980733",
+        "mobilesdk_app_id": "1:166028945866:android:6b24ccf5450ba32d980733",
         "android_client_info": {
-          "package_name": "com.gooddeal.app"
+          "package_name": "com.goooood.app"
         }
       },
       "oauth_client": [],

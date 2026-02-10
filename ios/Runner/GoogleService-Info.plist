@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.gooddeal.app</string>
+	<string>com.goooood.app</string>
 	<key>PROJECT_ID</key>
 	<string>gooddeal-app</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:166028945866:ios:d5cdf1a258be846f980733</string>
+	<string>1:166028945866:ios:6aa9a9e316749348980733</string>
 </dict>
 </plist>

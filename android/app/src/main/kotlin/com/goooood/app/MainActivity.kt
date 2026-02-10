@@ -1,4 +1,4 @@
-package com.gooddeal.app
+package com.goooood.app
 
 import io.flutter.embedding.android.FlutterActivity
 
