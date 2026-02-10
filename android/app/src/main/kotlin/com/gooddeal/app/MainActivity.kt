@@ -1,4 +1,4 @@
-package com.tteolga.tteolga
+package com.gooddeal.app
 
 import io.flutter.embedding.android.FlutterActivity
 

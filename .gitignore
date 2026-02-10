@@ -43,3 +43,20 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase (generated / local)
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# Cloud Functions build output
+functions/lib/
+
+# Node modules
+functions/node_modules/
+
+# Flutter generated
+.flutter-plugins
+.dart_tool/
+pubspec.lock

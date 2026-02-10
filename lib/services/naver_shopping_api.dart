@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'dart:developer' as developer;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/product.dart';
 
@@ -67,6 +68,50 @@ class NaverShoppingApi {
         'X-Naver-Client-Secret': _clientSecret,
       };
 
+  // ── Firestore 캐시 헬퍼 ──
+
+  Future<List<Product>?> _firestoreProducts(String docId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('cache')
+          .doc(docId)
+          .get();
+      if (!doc.exists) return null;
+      final items = (doc.data()?['items'] as List<dynamic>?) ?? [];
+      if (items.isEmpty) return null;
+      return items
+          .map((e) =>
+              Product.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (e) {
+      debugPrint('[Cache] Firestore read $docId error: $e');
+      return null;
+    }
+  }
+
+  Future<List<T>?> _firestoreList<T>(
+    String docId,
+    T Function(Map<String, dynamic>) fromJson,
+  ) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('cache')
+          .doc(docId)
+          .get();
+      if (!doc.exists) return null;
+      final items = (doc.data()?['items'] as List<dynamic>?) ?? [];
+      if (items.isEmpty) return null;
+      return items
+          .map((e) => fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (e) {
+      debugPrint('[Cache] Firestore read $docId error: $e');
+      return null;
+    }
+  }
+
+  // ── 필터 ──
+
   /// 기본 필터 (쓰레기 제거)
   List<Product> _filterProducts(List<Product> products) {
     return products.where((p) {
@@ -119,6 +164,8 @@ class NaverShoppingApi {
     }
     return score;
   }
+
+  // ── 검색 (클라이언트 직접 호출 — 유저별 쿼리) ──
 
   /// 상품 검색 (필터링 + 품질 정렬)
   Future<List<Product>> search({
@@ -246,54 +293,7 @@ class NaverShoppingApi {
     return 'title_$title';
   }
 
-  /// 검색어 트렌드 조회
-  Future<List<TrendKeyword>> fetchSearchTrends({
-    required List<String> keywords,
-  }) async {
-    final cacheKey = 'trend|${keywords.join(",")}';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<TrendKeyword>;
-    }
-
-    final now = DateTime.now();
-    final startDate =
-        now.subtract(const Duration(days: 14)).toIso8601String().split('T')[0];
-    final endDate = now.toIso8601String().split('T')[0];
-
-    final groups =
-        keywords.map((k) => {'groupName': k, 'keywords': [k]}).toList();
-
-    final response = await _client.post(
-      Uri.parse(_trendUrl),
-      headers: {..._headers, 'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'startDate': startDate,
-        'endDate': endDate,
-        'timeUnit': 'week',
-        'keywordGroups': groups,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      throw NaverApiException(
-          'Trend API failed: ${response.statusCode}', response.statusCode);
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final results = (json['results'] as List<dynamic>?) ?? [];
-
-    final trends = results.map((r) {
-      final data = (r['data'] as List<dynamic>?) ?? [];
-      final lastRatio =
-          data.isNotEmpty ? (data.last['ratio'] as num).toDouble() : 0.0;
-      return TrendKeyword(keyword: r['title'] as String, ratio: lastRatio);
-    }).toList();
-
-    trends.sort((a, b) => b.ratio.compareTo(a.ratio));
-    _cache[cacheKey] = _CacheEntry<List<TrendKeyword>>(trends);
-    return trends;
-  }
+  // ── 트렌드 차트 (클라이언트 직접 호출 — 유저별 쿼리) ──
 
   /// 트렌드 차트 데이터 (주간 추이 포인트)
   Future<Map<String, List<TrendChartPoint>>> fetchTrendChart({
@@ -342,7 +342,9 @@ class NaverShoppingApi {
     return chartData;
   }
 
-  /// 쇼핑인사이트: 카테고리별 실시간 인기 검색어 (네이버 실제 유저 데이터)
+  // ── 서버 캐시 우선 데이터 (Firestore → API fallback) ──
+
+  /// 쇼핑인사이트: 카테고리별 실시간 인기 검색어
   Future<List<PopularKeyword>> fetchPopularKeywords({
     required String categoryId,
     String? categoryName,
@@ -352,6 +354,19 @@ class NaverShoppingApi {
     if (cached != null && !cached.isExpired) {
       return cached.data as List<PopularKeyword>;
     }
+
+    // Firestore 캐시
+    final firestore = await _firestoreList(
+      'popularKeywords_$categoryId',
+      PopularKeyword.fromJson,
+    );
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<PopularKeyword>>(firestore);
+      return firestore;
+    }
+
+    // API fallback (웹에서는 CORS로 불가)
+    if (kIsWeb) return [];
 
     final now = DateTime.now();
     final today =
@@ -400,6 +415,19 @@ class NaverShoppingApi {
       return cached.data as List<PopularKeyword>;
     }
 
+    // Firestore 캐시
+    final firestore = await _firestoreList(
+      'popularKeywords_all',
+      PopularKeyword.fromJson,
+    );
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<PopularKeyword>>(firestore);
+      return firestore;
+    }
+
+    // API fallback
+    if (kIsWeb) return [];
+
     final allKeywords = <PopularKeyword>[];
 
     for (final entry in shoppingCategories.entries) {
@@ -419,13 +447,22 @@ class NaverShoppingApi {
   }
 
   /// 네이버 쇼핑 오늘끝딜/스페셜딜 실제 핫딜 상품 가져오기
-  /// (shopping.naver.com/ns/home/today-event 의 __NEXT_DATA__ 파싱)
   Future<List<Product>> fetchTodayDeals() async {
     const cacheKey = 'todayDeals';
     final cached = _cache[cacheKey];
     if (cached != null && !cached.isExpired) {
       return cached.data as List<Product>;
     }
+
+    // Firestore 캐시
+    final firestore = await _firestoreProducts('todayDeals');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    // API fallback (웹에서는 CORS로 불가)
+    if (kIsWeb) return [];
 
     final response = await _client.get(
       Uri.parse('https://shopping.naver.com/ns/home/today-event'),
@@ -484,21 +521,31 @@ class NaverShoppingApi {
     return products;
   }
 
-  /// 네이버 쇼핑 BEST100 인기 상품 가져오기 (JSON API)
-  /// sortType: PRODUCT_CLICK(클릭순) 또는 PRODUCT_BUY(구매순)
+  /// 네이버 쇼핑 BEST100 인기 상품 가져오기
   Future<List<Product>> fetchBest100({
     String sortType = 'PRODUCT_CLICK',
+    String categoryId = 'A',
   }) async {
-    final cacheKey = 'best100|$sortType';
+    final cacheKey = 'best100|$sortType|$categoryId';
     final cached = _cache[cacheKey];
     if (cached != null && !cached.isExpired) {
       return cached.data as List<Product>;
     }
 
+    // Firestore 캐시 (서버는 PRODUCT_CLICK으로 캐싱)
+    final firestore = await _firestoreProducts('best100_$categoryId');
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+
+    // API fallback (웹에서는 CORS로 불가)
+    if (kIsWeb) return [];
+
     final response = await _client.get(
       Uri.parse(
           'https://snxbest.naver.com/api/v1/snxbest/product/rank'
-          '?ageType=ALL&categoryId=A&sortType=$sortType&periodType=DAILY'),
+          '?ageType=ALL&categoryId=$categoryId&sortType=$sortType&periodType=DAILY'),
       headers: {
         'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -515,14 +562,6 @@ class NaverShoppingApi {
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final rawProducts = (json['products'] as List<dynamic>?) ?? [];
-
-    // 첫 번째 아이템 디버그 로그 (reviewCount, purchaseCount 등 필드 확인)
-    if (rawProducts.isNotEmpty) {
-      developer.log(
-        'Best100 first item keys: ${(rawProducts.first as Map<String, dynamic>).keys.toList()}',
-        name: 'NaverShoppingApi',
-      );
-    }
 
     final products = <Product>[];
     for (final item in rawProducts) {
@@ -546,6 +585,19 @@ class NaverShoppingApi {
     if (cached != null && !cached.isExpired) {
       return cached.data as List<TrendKeyword>;
     }
+
+    // Firestore 캐시
+    final firestore = await _firestoreList(
+      'keywordRank',
+      TrendKeyword.fromJson,
+    );
+    if (firestore != null) {
+      _cache[cacheKey] = _CacheEntry<List<TrendKeyword>>(firestore);
+      return firestore;
+    }
+
+    // API fallback (웹에서는 CORS로 불가)
+    if (kIsWeb) return [];
 
     final response = await _client.get(
       Uri.parse(
@@ -576,8 +628,6 @@ class NaverShoppingApi {
         final fluctuation = (item['rankFluctuation'] as num?)?.toInt() ?? 0;
         final status = item['status']?.toString() ?? 'STABLE';
 
-        // rankFluctuation: 양수=이전보다 순위가 올라감
-        // status: NEW=신규진입, STABLE=변동없음, UP=상승, DOWN=하락
         int? rankChange;
         if (status == 'NEW') {
           rankChange = null; // 신규
@@ -619,6 +669,12 @@ class TrendKeyword {
     required this.ratio,
     this.rankChange,
   });
+
+  factory TrendKeyword.fromJson(Map<String, dynamic> json) => TrendKeyword(
+    keyword: json['keyword']?.toString() ?? '',
+    ratio: (json['ratio'] as num?)?.toDouble() ?? 0,
+    rankChange: (json['rankChange'] as num?)?.toInt(),
+  );
 }
 
 class PopularKeyword {
@@ -630,6 +686,12 @@ class PopularKeyword {
     required this.keyword,
     required this.category,
   });
+
+  factory PopularKeyword.fromJson(Map<String, dynamic> json) => PopularKeyword(
+    rank: (json['rank'] as num?)?.toInt() ?? 0,
+    keyword: json['keyword']?.toString() ?? '',
+    category: json['category']?.toString() ?? '',
+  );
 }
 
 class _CacheEntry<T> {

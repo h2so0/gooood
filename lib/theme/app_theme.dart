@@ -32,6 +32,9 @@ class AppColors {
   // Semantic
   static const drop = Color(0xFFE04040);   // price drop percentage
   static const badge = Color(0xFF888888);  // badge/tag inside content
+  static const rankUp = Color(0xFFFF5252);   // 순위 상승 / NEW
+  static const rankDown = Color(0xFF448AFF); // 순위 하락
+  static const star = Color(0xFFFFB800);     // 별점
 }
 
 class TteolgaTheme {
@@ -46,6 +49,9 @@ class TteolgaTheme {
   final Color border;
   final Color drop;
   final Color badge;
+  final Color rankUp;
+  final Color rankDown;
+  final Color star;
   final Brightness brightness;
 
   const TteolgaTheme({
@@ -60,6 +66,9 @@ class TteolgaTheme {
     required this.border,
     required this.drop,
     required this.badge,
+    required this.rankUp,
+    required this.rankDown,
+    required this.star,
     required this.brightness,
   });
 
@@ -75,6 +84,9 @@ class TteolgaTheme {
     border: AppColors.darkBorder,
     drop: AppColors.drop,
     badge: AppColors.badge,
+    rankUp: AppColors.rankUp,
+    rankDown: AppColors.rankDown,
+    star: AppColors.star,
     brightness: Brightness.dark,
   );
 
@@ -90,6 +102,9 @@ class TteolgaTheme {
     border: AppColors.lightBorder,
     drop: AppColors.drop,
     badge: AppColors.badge,
+    rankUp: AppColors.rankUp,
+    rankDown: AppColors.rankDown,
+    star: AppColors.star,
     brightness: Brightness.light,
   );
 

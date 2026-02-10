@@ -4,119 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../theme/app_theme.dart';
+import '../utils/image_helper.dart';
 import 'deal_badge.dart';
-
-/// 리스트형 상품 카드 (홈 피드용 - 기존 그대로)
-class ProductCard extends ConsumerWidget {
-  final Product product;
-  final VoidCallback? onTap;
-
-  const ProductCard({super.key, required this.product, this.onTap});
-
-  static final _fmt = NumberFormat('#,###', 'ko_KR');
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = ref.watch(tteolgaThemeProvider);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: t.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: t.border, width: 0.5),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: product.imageUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: product.imageUrl,
-                      width: 68,
-                      height: 68,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => _thumb(t),
-                      errorWidget: (_, __, ___) => _thumb(t),
-                    )
-                  : _thumb(t),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (product.badge != null) ...[
-                    DealBadgeWidget(badge: product.badge!),
-                    const SizedBox(height: 6),
-                  ],
-                  Text(
-                    product.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Text(
-                        '${_fmt.format(product.currentPrice)}원',
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (product.dropRate > 0) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '-${product.dropRate.toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            color: t.drop,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (product.mallName.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      product.mallName,
-                      style:
-                          TextStyle(color: t.textTertiary, fontSize: 12),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _thumb(TteolgaTheme t) {
-    return Container(
-      width: 68,
-      height: 68,
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(Icons.shopping_bag_outlined,
-          color: t.textTertiary, size: 24),
-    );
-  }
-}
 
 /// 그리드형 상품 카드 (카테고리/검색 결과용)
 /// 상점명(좌측) → 상품명 2줄(좌측) → 할인율(빨간박스 흰텍스트) + 금액(우측)
@@ -155,7 +44,7 @@ class ProductGridCard extends ConsumerWidget {
                   children: [
                     product.imageUrl.isNotEmpty
                         ? CachedNetworkImage(
-                            imageUrl: product.imageUrl,
+                            imageUrl: proxyImage(product.imageUrl),
                             fit: BoxFit.cover,
                             placeholder: (_, __) =>
                                 Container(color: t.surface),

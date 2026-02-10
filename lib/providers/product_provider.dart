@@ -168,6 +168,8 @@ final hotProductsProvider = FutureProvider<List<Product>>((ref) async {
     final filtered = deals.where((p) => p.dropRate > 0 || p.id.startsWith('best_')).toList();
     final bestCount = filtered.where((p) => p.id.startsWith('best_')).length;
     debugPrint('[HotDeal] 필터 후: total=${filtered.length}, best=$bestCount');
+    // 오늘끝딜 카테고리 분류를 백그라운드로 미리 시작
+    _classifyTodayDeals(api);
     return filtered;
   } catch (e) {
     debugPrint('[HotDeal] ERROR: $e');
@@ -231,116 +233,231 @@ final searchResultsProvider =
   }
 });
 
-// ── 카테고리 (핫딜 상품을 카테고리별로 필터링) ──
+// ── 카테고리 (Best100 카테고리별 직접 + 오늘끝딜 분류) ──
 
+/// 앱 카테고리 → 네이버 쇼핑 카테고리 ID
+const _appCategoryIds = <String, String>{
+  '디지털/가전': '50000003',
+  '패션/의류': '50000000',
+  '생활/건강': '50000008',
+  '식품': '50000006',
+  '뷰티': '50000002',
+  '스포츠/레저': '50000007',
+  '출산/육아': '50000005',
+};
+
+/// 네이버 category1/2/3 → 앱 카테고리 매핑
+String? _mapToAppCategory(String cat1, [String? cat2, String? cat3]) {
+  final sub = '${cat2 ?? ''} ${cat3 ?? ''}'.trim();
+  if (sub.contains('반려') || sub.contains('애완') || sub.contains('펫')) {
+    return '반려동물';
+  }
+  if (cat1.contains('디지털') || cat1.contains('가전') || cat1.contains('컴퓨터') ||
+      cat1.contains('휴대폰') || cat1.contains('게임')) return '디지털/가전';
+  if (cat1.contains('패션') || cat1.contains('의류') || cat1.contains('잡화')) return '패션/의류';
+  if (cat1.contains('화장품') || cat1.contains('미용') || cat1.contains('뷰티')) return '뷰티';
+  if (cat1.contains('식품') || cat1.contains('음료')) return '식품';
+  if (cat1.contains('스포츠') || cat1.contains('레저')) return '스포츠/레저';
+  if (cat1.contains('출산') || cat1.contains('육아') || cat1.contains('유아')) return '출산/육아';
+  if (cat1.contains('생활') || cat1.contains('건강') || cat1.contains('가구') ||
+      cat1.contains('인테리어') || cat1.contains('주방') || cat1.contains('문구')) return '생활/건강';
+  return null;
+}
+
+/// 상품 제목 기반 로컬 키워드 매칭으로 카테고리 분류 (API 호출 0회)
 const _categoryKeywords = <String, List<String>>{
   '디지털/가전': [
-    '노트북', '갤럭시', '아이폰', '아이패드', '에어팟', '버즈', '워치',
-    '냉장고', '세탁기', '청소기', '에어컨', '건조기', '전자레인지',
-    '스마트TV', '텔레비전', 'OLED', 'QLED', '인치TV',
-    '모니터', '스피커', '이어폰', '헤드폰', '충전기', '배터리',
-    '태블릿', '키보드', '마우스', '공기청정기', '가습기', '제습기',
-    '건전지', '카메라', '프린터', 'SSD', 'USB', '드라이기',
-    '로봇청소기', '식기세척기', '전기포트', '믹서기',
+    'TV', '텔레비전', '노트북', '냉장고', '세탁기', '에어컨', '건조기', '청소기',
+    '이어폰', '헤드폰', '스피커', '태블릿', '모니터', '키보드', '마우스', 'SSD',
+    '카메라', '게임', '컴퓨터', '프린터', '공유기', '라우터', '선풍기', '가습기',
+    '제습기', '전자레인지', '오븐', '식기세척기', '밥솥', '에어프라이어', '믹서기',
+    '블렌더', '다리미', '스마트폰', '휴대폰', '핸드폰', '갤럭시', '아이폰',
+    '아이패드', '맥북', '그래픽카드', 'GPU', 'CPU', '메모리', 'RAM', '하드디스크',
+    'HDD', 'USB', '충전기', '보조배터리', '스마트워치', '로봇청소기',
+    '전기면도기', '면도기', '드라이기', '고데기', '전동칫솔', '안마기', '안마의자',
+    '빔프로젝터', '프로젝터', '닌텐도', '플스', 'PS5', '엑스박스',
   ],
   '패션/의류': [
-    '티셔츠', '반팔', '긴팔', '바지', '팬츠', '자켓', '코트', '패딩',
-    '원피스', '스커트', '후드', '집업', '맨투맨', '니트', '셔츠',
-    '운동화', '스니커즈', '슬리퍼', '구두', '부츠', '양말',
-    '스파오', '무신사', '아디다스', '나이키', '뉴발란스', '베이직하우스',
-    '잡화', '가방', '지갑', '벨트', '모자', '청바지', '레깅스',
-    '블라우스', '카디건', '트렌치', '점퍼', '조끼',
-  ],
-  '생활/건강': [
-    '비타민', '영양제', '유산균', '프로바이오틱스', '오메가', '루테인',
-    '밀크씨슬', '엽산', '철분', '칼슘', '마그네슘', '콜라겐', '알부민',
-    '세제', '섬유유연제', '핸드워시', '치약', '칫솔', '세정제',
-    '장갑', '도마', '지퍼백', '행주', '수세미', '청소용품', '걸레',
-    '베개', '이불', '침구', '토퍼', '매트리스',
-    '온열', '찜질', '안대', '체중계', '혈압계',
-    '주방용품', '채칼', '냄비', '프라이팬', '텀블러', '물통',
-    '규조토', '수건', '발매트', '펜트리', '수납', '정리함',
-    '방석', '등받이쿠션',
-  ],
-  '식품': [
-    '소스', '파스타', '떡볶이', '라면', '국밥', '순대', '김치',
-    '쿠키', '과자', '약과', '인절미', '케이크', '초콜릿',
-    '커피', '홍차', '두유', '우유', '음료', '주스',
-    '참치', '런천미트', '소시지', '육포', '불고기',
-    '사과', '망고', '딸기', '레드향', '바나나',
-    '견과', '아몬드', '호두', '캐슈넛', '선물세트',
-    '양념', '간장', '된장', '고추장', '식용유', '올리브오일',
-    '쌀', '현미', '잡곡', '꼬막', '비빔밥',
-    '그래놀라', '시리얼', '에너지바', '프로틴바',
-    '냉동식품', '밀키트', '즉석밥', '통조림',
+    '원피스', '자켓', '코트', '바지', '셔츠', '블라우스', '니트', '가디건',
+    '운동화', '가방', '지갑', '벨트', '스니커즈', '구두', '샌들', '슬리퍼',
+    '부츠', '모자', '캡', '스카프', '머플러', '장갑', '양말', '넥타이',
+    '정장', '수트', '청바지', '데님', '패딩', '점퍼', '후드', '맨투맨',
+    '티셔츠', '반팔', '긴팔', '레깅스', '치마', '스커트', '백팩', '크로스백',
+    '토트백', '숄더백', '클러치', '선글라스', '시계', '팔찌', '목걸이', '귀걸이',
+    '반지', '액세서리', '주얼리',
   ],
   '뷰티': [
-    'EDT', '향수', '퍼퓸', '오드', '설화수', '에스티로더',
-    '샴푸', '린스', '컨디셔너', '트리트먼트', '헤어에센스',
-    '로션', '세럼', '에센스', '토너', '스킨케어',
-    '선크림', '자외선', 'SPF', '쿠션팩트', '파운데이션', '립스틱',
-    '마스카라', '아이라이너', '클렌징', '클렌징폼', '클렌징오일',
-    '바디로션', '핸드크림', '바세린',
-    '탈모샴푸', '두피케어', '염색약',
-    '화장품', '메이크업', '뷰티', '스킨로션', '팩트',
-    '틴트', '아이섀도', '컨실러', '프라이머', '미스트',
+    '화장품', '스킨', '로션', '세럼', '파운데이션', '립스틱', '마스카라',
+    '선크림', '클렌징', '토너', '에센스', '크림', '아이섀도', '블러셔', '치크',
+    '컨실러', '프라이머', '쿠션', '팩트', '립글로스', '립밤', '네일',
+    '매니큐어', '향수', '퍼퓸', '바디로션', '바디워시', '샴푸', '컨디셔너',
+    '린스', '트리트먼트', '헤어오일', '헤어에센스', '마스크팩', '시트마스크',
+    '필링', '스크럽', '미스트', '데오드란트', '제모', '왁싱',
+  ],
+  '식품': [
+    '과일', '고기', '수산', '김치', '라면', '커피', '음료', '견과', '반찬',
+    '간식', '과자', '초콜릿', '캔디', '젤리', '빵', '케이크', '떡', '만두',
+    '국수', '파스타', '소스', '양념', '식용유', '올리브유', '참기름', '소금',
+    '설탕', '밀가루', '쌀', '잡곡', '계란', '달걀', '우유', '두유', '요거트',
+    '치즈', '버터', '햄', '소시지', '참치', '연어', '새우', '오징어',
+    '냉동식품', '즉석식품', '도시락', '선물세트', '홍삼', '꿀', '차', '주스',
+    '탄산수', '생수', '맥주', '와인', '위스키', '소주',
+  ],
+  '생활/건강': [
+    '세제', '휴지', '물티슈', '칫솔', '치약', '비타민', '유산균', '침대',
+    '매트리스', '베개', '이불', '커튼', '러그', '카펫', '수건', '타올',
+    '주방세제', '섬유유연제', '방향제', '탈취제', '살균', '소독', '마스크',
+    '손세정제', '핸드크림', '밴드', '반창고', '체온계', '혈압계', '체중계',
+    '정수기', '공기청정기', '수납', '선반', '행거', '옷걸이', '쓰레기통',
+    '빗자루', '걸레', '장갑', '고무장갑', '전구', 'LED', '조명',
+    '오메가3', '루테인', '프로바이오틱스', '프로틴', '단백질',
+    '콜라겐', '철분', '칼슘', '마그네슘', '아연', '홍삼',
   ],
   '스포츠/레저': [
-    '헬스', '요가매트', '필라테스', '등산', '캠핑',
-    '자전거', '러닝화', '수영', '수영복', '골프', '테니스',
-    '가민', '스마트밴드', '만보기',
-    '텐트', '침낭', '랜턴', '여행가방', '캠핑용품',
-    '에너지젤', '프로틴쉐이크', '헬스장갑', '아령', '덤벨',
-    '요가복', '등산화', '골프채', '배드민턴', '축구공',
+    '골프', '등산', '자전거', '요가', '헬스', '캠핑', '낚시', '수영',
+    '테니스', '배드민턴', '축구', '농구', '야구', '런닝', '조깅', '트레킹',
+    '등산화', '골프채', '골프공', '텐트', '침낭', '랜턴', '버너', '쿨러',
+    '아이스박스', '낚싯대', '릴', '웨이트', '덤벨', '바벨', '매트',
+    '폼롤러', '짐볼', '밴드', '수영복', '래쉬가드', '고글', '스키',
+    '보드', '스노보드', '인라인', '킥보드', '스쿠터',
   ],
   '출산/육아': [
-    '기저귀', '분유', '이유식', '젖병', '아기옷', '유아용',
-    '키즈', '주니어', '레고', '장난감', '동화책',
-    '유모차', '카시트', '어린이집', '돌잔치',
-    '유아식', '아기침대', '보행기',
+    '기저귀', '분유', '유모차', '아기', '유아', '어린이', '젖병', '이유식',
+    '물티슈', '아기띠', '카시트', '보행기', '장난감', '블록', '인형',
+    '동화책', '그림책', '아기옷', '바디슈트', '턱받이', '수유', '수유쿠션',
+    '임산부', '산모', '출산', '태교', '아기침대', '범퍼침대', '놀이매트',
   ],
   '반려동물': [
-    '강아지', '고양이', '사료', '펫푸드', '펫용품',
-    '반려견', '반려묘', '애견', '애묘', '캣타워', '목줄', '배변패드',
-    '강아지간식', '고양이간식', '펫샴푸', '스크래처',
+    '강아지', '고양이', '사료', '펫', '반려견', '반려묘', '캣', '독',
+    '간식', '껌', '스낵', '하네스', '목줄', '리드줄', '장난감', '캣타워',
+    '배변패드', '모래', '캣모래', '샴푸', '미용', '빗', '브러시',
+    '이동장', '캐리어', '하우스', '쿨매트', '방석', '침대',
   ],
 };
 
-/// 카테고리 분류: 키워드 매칭 점수 기반 (가장 많이 매칭되는 카테고리 선택)
-String _classifyCategory(String title) {
+String? _classifyByTitle(String title) {
   final lower = title.toLowerCase();
-  String bestCategory = '기타';
-  int bestScore = 0;
-
   for (final entry in _categoryKeywords.entries) {
-    int score = 0;
-    for (final kw in entry.value) {
-      if (lower.contains(kw.toLowerCase())) score++;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestCategory = entry.key;
+    for (final keyword in entry.value) {
+      if (lower.contains(keyword.toLowerCase())) {
+        return entry.key;
+      }
     }
   }
-  return bestCategory;
+  return null;
+}
+
+/// 오늘끝딜 카테고리 분류 (캐시 + 동시 요청 방지)
+final _dealCatCache = <String, String>{};
+DateTime? _dealCatCacheTime;
+Future<Map<String, String>>? _pendingDealCat;
+
+/// 새로고침 시 캐시 초기화
+void clearDealCategoryCache() {
+  _dealCatCache.clear();
+  _dealCatCacheTime = null;
+  _pendingDealCat = null;
+}
+
+Future<Map<String, String>> _classifyTodayDeals(NaverShoppingApi api) async {
+  if (_dealCatCacheTime != null &&
+      DateTime.now().difference(_dealCatCacheTime!) < const Duration(minutes: 30) &&
+      _dealCatCache.isNotEmpty) {
+    return _dealCatCache;
+  }
+  if (_pendingDealCat != null) return _pendingDealCat!;
+  _pendingDealCat = _doClassifyTodayDeals(api);
+  try {
+    return await _pendingDealCat!;
+  } finally {
+    _pendingDealCat = null;
+  }
+}
+
+Future<Map<String, String>> _doClassifyTodayDeals(NaverShoppingApi api) async {
+  final deals = await api.fetchTodayDeals(); // 이미 캐시됨
+  final result = <String, String>{};
+
+  // 로컬 키워드 매칭으로 분류 (API 호출 0회)
+  for (final p in deals) {
+    // 1차: 네이버 카테고리 정보가 있으면 활용
+    final cat = _mapToAppCategory(p.category1, p.category2, p.category3);
+    if (cat != null) {
+      result[p.id] = cat;
+      continue;
+    }
+    // 2차: 제목 기반 키워드 매칭
+    final titleCat = _classifyByTitle(p.title);
+    if (titleCat != null) {
+      result[p.id] = titleCat;
+    }
+  }
+
+  debugPrint('[Category] 오늘끝딜 분류: ${result.length}/${deals.length}');
+  _dealCatCache..clear()..addAll(result);
+  _dealCatCacheTime = DateTime.now();
+  return result;
 }
 
 final categoryDealsProvider =
     FutureProvider.family<List<Product>, String>((ref, category) async {
   try {
     final api = ref.read(naverApiProvider);
-    final deals = await _fetchAllDeals(api);
-    // 해당 카테고리에 맞는 핫딜만 필터링
-    final filtered = deals
-        .where((p) => p.dropRate > 0 && _classifyCategory(p.title) == category)
+
+    // 1. 카테고리별 Best100 (1회 호출)
+    List<Product> best100;
+    if (category == '반려동물') {
+      best100 = await api.searchClean(query: '반려동물 인기상품', display: 100);
+    } else {
+      final catId = _appCategoryIds[category];
+      if (catId == null) return [];
+      best100 = await api.fetchBest100(categoryId: catId);
+    }
+
+    // 2. 오늘끝딜 중 해당 카테고리 상품 추가 (~14회 호출, 캐시됨)
+    final todayDeals = await api.fetchTodayDeals();
+    final dealCategories = await _classifyTodayDeals(api);
+    final matchingDeals = todayDeals
+        .where((p) => dealCategories[p.id] == category && p.dropRate > 0)
         .toList();
-    if (filtered.isNotEmpty) return filtered;
-    // 분류 안 된 상품이 많으면 할인율 있는 것만이라도
-    return deals.where((p) => p.dropRate > 0).toList();
+
+    // 3. 병합 (오늘끝딜 상단, 중복 제거) + 구간 셔플
+    final seen = best100.map((p) => p.id).toSet();
+    final merged = [
+      ...matchingDeals.where((p) => !seen.contains(p.id)),
+      ...best100,
+    ];
+    merged.sort((a, b) => b.dropRate.compareTo(a.dropRate));
+    final rng = Random();
+    for (int i = 0; i < merged.length; i += 10) {
+      final end = (i + 10).clamp(0, merged.length);
+      final chunk = merged.sublist(i, end)..shuffle(rng);
+      merged.setRange(i, end, chunk);
+    }
+    return merged;
   } catch (_) {
     return [];
   }
 });
+
+// ── 내가 본 상품 기록 ──
+
+final viewedProductsProvider =
+    StateNotifierProvider<ViewedProductsNotifier, List<Product>>((ref) {
+  return ViewedProductsNotifier();
+});
+
+class ViewedProductsNotifier extends StateNotifier<List<Product>> {
+  ViewedProductsNotifier() : super([]);
+
+  void add(Product product) {
+    // 중복 제거 후 맨 앞에 추가
+    state = [
+      product,
+      ...state.where((p) => p.id != product.id),
+    ].take(50).toList();
+  }
+}
 
 // ── 트렌드 키워드 (검색 화면용 - 실제 인기 검색어) ──
 

@@ -43,6 +43,52 @@ class Product {
     this.saleEndDate,
   });
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'link': link,
+    'imageUrl': imageUrl,
+    'currentPrice': currentPrice,
+    'previousPrice': previousPrice,
+    'mallName': mallName,
+    'brand': brand,
+    'maker': maker,
+    'category1': category1,
+    'category2': category2,
+    'category3': category3,
+    'productType': productType,
+    'reviewCount': reviewCount,
+    'purchaseCount': purchaseCount,
+    'reviewScore': reviewScore,
+    'rank': rank,
+    'isDeliveryFree': isDeliveryFree,
+    'isArrivalGuarantee': isArrivalGuarantee,
+    'saleEndDate': saleEndDate,
+  };
+
+  factory Product.fromJson(Map<String, dynamic> json) => Product(
+    id: json['id']?.toString() ?? '',
+    title: json['title']?.toString() ?? '',
+    link: json['link']?.toString() ?? '',
+    imageUrl: json['imageUrl']?.toString() ?? '',
+    currentPrice: (json['currentPrice'] as num?)?.toInt() ?? 0,
+    previousPrice: (json['previousPrice'] as num?)?.toInt(),
+    mallName: json['mallName']?.toString() ?? '',
+    brand: json['brand']?.toString(),
+    maker: json['maker']?.toString(),
+    category1: json['category1']?.toString() ?? '',
+    category2: json['category2']?.toString(),
+    category3: json['category3']?.toString(),
+    productType: json['productType']?.toString() ?? '2',
+    reviewCount: (json['reviewCount'] as num?)?.toInt(),
+    purchaseCount: (json['purchaseCount'] as num?)?.toInt(),
+    reviewScore: (json['reviewScore'] as num?)?.toDouble(),
+    rank: (json['rank'] as num?)?.toInt(),
+    isDeliveryFree: json['isDeliveryFree'] == true,
+    isArrivalGuarantee: json['isArrivalGuarantee'] == true,
+    saleEndDate: json['saleEndDate']?.toString(),
+  );
+
   double get dropRate {
     if (previousPrice == null || previousPrice == 0) return 0;
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;

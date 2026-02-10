@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/product.dart';
 import '../theme/app_theme.dart';
 import '../widgets/deal_badge.dart';
+import '../providers/product_provider.dart';
+import '../utils/image_helper.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final Product product;
@@ -28,6 +31,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   void initState() {
     super.initState();
     _initCountdown();
+    // 조회 기록 저장
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(viewedProductsProvider.notifier).add(p);
+    });
   }
 
   void _initCountdown() {
@@ -224,7 +231,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           aspectRatio: 1,
           child: p.imageUrl.isNotEmpty
               ? CachedNetworkImage(
-                  imageUrl: p.imageUrl,
+                  imageUrl: proxyImage(p.imageUrl),
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(color: t.surface),
                   errorWidget: (_, __, ___) => Container(
@@ -273,7 +280,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               const Spacer(),
               _overlayButton(
                 icon: Icons.ios_share,
-                onTap: () {},
+                onTap: () => _shareProduct(),
               ),
             ],
           ),
@@ -359,10 +366,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   Widget _starIcon(double score) {
-    const color = Color(0xFFFFB800);
-    if (score >= 4.5) return const Icon(Icons.star, size: 18, color: color);
-    if (score >= 3.5) return const Icon(Icons.star_half, size: 18, color: color);
-    return const Icon(Icons.star_border, size: 18, color: color);
+    final t = ref.read(tteolgaThemeProvider);
+    if (score >= 4.5) return Icon(Icons.star, size: 18, color: t.star);
+    if (score >= 3.5) return Icon(Icons.star_half, size: 18, color: t.star);
+    return Icon(Icons.star_border, size: 18, color: t.star);
   }
 
   // ────────────────────── Delivery Row ──────────────────────
@@ -505,6 +512,23 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         ),
       ),
     );
+  }
+
+  // ────────────────────── Share ──────────────────────
+
+  void _shareProduct() {
+    final price = _fmt.format(p.currentPrice);
+    final text = '${p.title}\n${price}원\n${p.link}';
+    Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('링크가 복사되었습니다'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // ────────────────────── Helpers ──────────────────────

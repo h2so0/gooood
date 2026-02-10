@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 import '../providers/product_provider.dart';
@@ -9,6 +11,7 @@ import '../services/naver_shopping_api.dart';
 import 'product_detail_screen.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
+import '../utils/image_helper.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
@@ -184,68 +187,89 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
     final t = ref.watch(tteolgaThemeProvider);
     final hotProducts = ref.watch(hotProductsProvider);
     final trendKeywords = ref.watch(trendKeywordsProvider);
+    final droppedProducts = ref.watch(droppedProductsProvider);
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.zero,
-      children: [
-        const SizedBox(height: 6),
-        // ── 인기 검색어 (롤링 바 + 펼치기) ──
-        trendKeywords.when(
-          data: (keywords) {
-            if (keywords.isEmpty) return const SizedBox();
-            return _buildTrendBar(t, keywords);
-          },
-          loading: () => const SizedBox(height: 44),
-          error: (_, __) => const SizedBox(),
-        ),
+    return RefreshIndicator(
+      color: t.textPrimary,
+      backgroundColor: t.card,
+      onRefresh: () async {
+        ref.invalidate(hotProductsProvider);
+        ref.invalidate(trendKeywordsProvider);
+        ref.invalidate(droppedProductsProvider);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
+        padding: EdgeInsets.zero,
+        children: [
+          const SizedBox(height: 6),
+          // ── 인기 검색어 (롤링 바 + 펼치기) ──
+          trendKeywords.when(
+            data: (keywords) {
+              if (keywords.isEmpty) return const SizedBox();
+              return _buildTrendBar(t, keywords);
+            },
+            loading: () => const SizedBox(height: 44),
+            error: (_, __) => const SizedBox(),
+          ),
 
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-        // ── 오늘의 핫딜 (그리드) ──
-        _sectionTitle(t, '오늘의 핫딜'),
-        const SizedBox(height: 8),
-        hotProducts.when(
-          data: (products) {
-            if (products.isEmpty) {
+          // ── 가격 하락 상품 (데이터 있을 때만) ──
+          droppedProducts.when(
+            data: (dropped) {
+              if (dropped.isEmpty) return const SizedBox();
+              return _buildDroppedSection(t, dropped);
+            },
+            loading: () => const SizedBox(),
+            error: (_, __) => const SizedBox(),
+          ),
+
+          // ── 오늘의 핫딜 (그리드) ──
+          _sectionTitle(t, '오늘의 핫딜'),
+          const SizedBox(height: 8),
+          hotProducts.when(
+            data: (products) {
+              if (products.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text('핫딜 상품을 불러오는 중...',
+                      style:
+                          TextStyle(color: t.textTertiary, fontSize: 13)),
+                );
+              }
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text('핫딜 상품을 불러오는 중...',
-                    style:
-                        TextStyle(color: t.textTertiary, fontSize: 13)),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: MasonryGridView.count(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                itemCount: products.length,
-                itemBuilder: (context, i) => ProductGridCard(
-                  product: products[i],
-                  onTap: () => widget.onTap(products[i]),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: MasonryGridView.count(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  itemCount: products.length,
+                  itemBuilder: (context, i) => ProductGridCard(
+                    product: products[i],
+                    onTap: () => widget.onTap(products[i]),
+                  ),
                 ),
-              ),
-            );
-          },
-          loading: () => SizedBox(
-            height: 200,
-            child: Center(
-                child:
-                    CircularProgressIndicator(color: t.textTertiary)),
+              );
+            },
+            loading: () => SizedBox(
+              height: 200,
+              child: Center(
+                  child:
+                      CircularProgressIndicator(color: t.textTertiary)),
+            ),
+            error: (_, __) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text('불러오기 실패',
+                  style: TextStyle(color: t.textSecondary)),
+            ),
           ),
-          error: (_, __) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('불러오기 실패',
-                style: TextStyle(color: t.textSecondary)),
-          ),
-        ),
-        const SizedBox(height: 40),
-      ],
+          const SizedBox(height: 40),
+        ],
+      ),
     );
   }
 
@@ -263,13 +287,13 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF5252).withOpacity(0.1),
+          color: t.rankUp.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: const Text(
+        child: Text(
           'NEW',
           style: TextStyle(
-            color: Color(0xFFFF5252),
+            color: t.rankUp,
             fontSize: 10,
             fontWeight: FontWeight.w700,
           ),
@@ -286,17 +310,13 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
       children: [
         Icon(
           isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-          color: isUp
-              ? const Color(0xFFFF5252)
-              : const Color(0xFF448AFF),
+          color: isUp ? t.rankUp : t.rankDown,
           size: 20,
         ),
         Text(
           '${rankChange.abs()}',
           style: TextStyle(
-            color: isUp
-                ? const Color(0xFFFF5252)
-                : const Color(0xFF448AFF),
+            color: isUp ? t.rankUp : t.rankDown,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
@@ -430,6 +450,111 @@ class _HomeFeedState extends ConsumerState<_HomeFeed> {
     );
   }
 
+  static final _priceFmt = NumberFormat('#,###', 'ko_KR');
+
+  Widget _buildDroppedSection(TteolgaTheme t, List<Product> dropped) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(t, '가격 하락'),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 160,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: dropped.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final p = dropped[i];
+              return GestureDetector(
+                onTap: () => widget.onTap(p),
+                child: Container(
+                  width: 130,
+                  decoration: BoxDecoration(
+                    color: t.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: t.border, width: 0.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(12)),
+                        child: SizedBox(
+                          height: 90,
+                          width: double.infinity,
+                          child: p.imageUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: proxyImage(p.imageUrl),
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) =>
+                                      Container(color: t.surface),
+                                  errorWidget: (_, __, ___) =>
+                                      Container(color: t.surface),
+                                )
+                              : Container(color: t.surface),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: t.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                if (p.dropRate > 0) ...[
+                                  Text(
+                                    '-${p.dropRate.toStringAsFixed(0)}%',
+                                    style: TextStyle(
+                                      color: t.drop,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                Flexible(
+                                  child: Text(
+                                    '${_priceFmt.format(p.currentPrice)}원',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: t.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
   Widget _sectionTitle(TteolgaTheme t, String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -473,6 +598,34 @@ class _RollingKeywordsState extends State<_RollingKeywords> {
       });
       _startRolling();
     });
+  }
+
+  Widget _buildMiniRankChange(int? rankChange) {
+    if (rankChange == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppColors.rankUp.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text('NEW',
+            style: TextStyle(color: AppColors.rankUp,
+                fontSize: 9, fontWeight: FontWeight.w700)),
+      );
+    }
+    if (rankChange == 0) return const SizedBox.shrink();
+    final isUp = rankChange > 0;
+    final color = isUp ? AppColors.rankUp : AppColors.rankDown;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+            color: color, size: 16),
+        Text('${rankChange.abs()}',
+            style: TextStyle(color: color, fontSize: 10,
+                fontWeight: FontWeight.w600)),
+      ],
+    );
   }
 
   @override
@@ -522,6 +675,7 @@ class _RollingKeywordsState extends State<_RollingKeywords> {
                 ),
               ),
             ),
+            _buildMiniRankChange(kw.rankChange),
           ],
         ),
       ),
@@ -552,6 +706,7 @@ class _CategoryFeed extends ConsumerWidget {
           color: t.textPrimary,
           backgroundColor: t.card,
           onRefresh: () async {
+            clearDealCategoryCache();
             ref.invalidate(categoryDealsProvider(category));
           },
           child: MasonryGridView.count(

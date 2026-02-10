@@ -1,0 +1,43 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git"],
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "gooddeal-app",
+          "appId": "1:166028945866:android:1ad76354ce4415a1980733",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "gooddeal-app",
+          "appId": "1:166028945866:ios:d5cdf1a258be846f980733",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "gooddeal-app",
+          "configurations": {
+            "android": "1:166028945866:android:1ad76354ce4415a1980733",
+            "ios": "1:166028945866:ios:d5cdf1a258be846f980733",
+            "web": "1:166028945866:web:39ed40991e329cd3980733"
+          }
+        }
+      }
+    }
+  }
+}

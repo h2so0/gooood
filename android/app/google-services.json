@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "166028945866",
+    "project_id": "gooddeal-app",
+    "storage_bucket": "gooddeal-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:166028945866:android:1ad76354ce4415a1980733",
+        "android_client_info": {
+          "package_name": "com.gooddeal.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDVaxfUfGISyUzgbdnXkYWlj3QcX4Kr3Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
