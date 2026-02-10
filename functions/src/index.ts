@@ -82,6 +82,39 @@ function dropRate(p: ProductJson): number {
   return ((p.previousPrice - p.currentPrice) / p.previousPrice) * 100;
 }
 
+function sortByDropRate(products: ProductJson[]): void {
+  products.sort((a, b) => dropRate(b) - dropRate(a));
+}
+
+/** Extract __NEXT_DATA__ JSON from an HTML page */
+function extractNextData(html: string): any | null {
+  // 1차: 정규식
+  const match = html.match(
+    /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
+  );
+  if (match) return JSON.parse(match[1]);
+
+  // 2차: indexOf (속성 순서가 다를 수 있음)
+  let startMarker = '<script id="__NEXT_DATA__" type="application/json">';
+  let startIdx = html.indexOf(startMarker);
+  if (startIdx === -1) {
+    const altIdx = html.indexOf("__NEXT_DATA__");
+    if (altIdx !== -1) {
+      const tagEnd = html.indexOf(">", altIdx);
+      if (tagEnd !== -1) {
+        const tagStart = html.lastIndexOf("<script", altIdx);
+        startMarker = html.substring(tagStart, tagEnd + 1);
+        startIdx = tagStart;
+      }
+    }
+    if (startIdx === -1) return null;
+  }
+  const jsonStart = startIdx + startMarker.length;
+  const endIdx = html.indexOf("</script>", jsonStart);
+  if (endIdx === -1) return null;
+  return JSON.parse(html.substring(jsonStart, endIdx));
+}
+
 async function writeCache(docId: string, items: unknown[]): Promise<void> {
   await admin.firestore().collection("cache").doc(docId).set({
     items,
@@ -103,12 +136,9 @@ async function fetchTodayDeals(): Promise<ProductJson[]> {
   if (!res.ok) return [];
 
   const html = await res.text();
-  const match = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/
-  );
-  if (!match) return [];
+  const nextData = extractNextData(html);
+  if (!nextData) return [];
 
-  const nextData = JSON.parse(match[1]);
   const waffleData = nextData?.props?.pageProps?.waffleData;
   if (!waffleData) return [];
 
@@ -167,7 +197,7 @@ async function fetchTodayDeals(): Promise<ProductJson[]> {
     }
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   return products;
 }
 
@@ -229,7 +259,7 @@ async function fetchBest100(
     });
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   return products;
 }
 
@@ -319,29 +349,9 @@ async function fetchShoppingLive(): Promise<ProductJson[]> {
   if (!res.ok) return [];
 
   const html = await res.text();
+  const nextData = extractNextData(html);
+  if (!nextData) return [];
 
-  // __NEXT_DATA__를 indexOf로 추출
-  let startMarker = '<script id="__NEXT_DATA__" type="application/json">';
-  let startIdx = html.indexOf(startMarker);
-  if (startIdx === -1) {
-    // 속성 순서가 다를 수 있음
-    const altIdx = html.indexOf("__NEXT_DATA__");
-    if (altIdx !== -1) {
-      const tagEnd = html.indexOf(">", altIdx);
-      if (tagEnd !== -1) {
-        const tagStart = html.lastIndexOf("<script", altIdx);
-        startMarker = html.substring(tagStart, tagEnd + 1);
-        startIdx = tagStart;
-      }
-    }
-    if (startIdx === -1) return [];
-  }
-  const jsonStart = startIdx + startMarker.length;
-  const endIdx = html.indexOf("</script>", jsonStart);
-  if (endIdx === -1) return [];
-  const jsonStr = html.substring(jsonStart, endIdx);
-
-  const nextData = JSON.parse(jsonStr);
   const trendingLives =
     nextData?.props?.pageProps?.initialRecoilState?.trendingLives ?? [];
 
@@ -402,7 +412,7 @@ async function fetchShoppingLive(): Promise<ProductJson[]> {
     }
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   return products;
 }
 
@@ -414,12 +424,9 @@ async function fetchNaverPromotions(): Promise<ProductJson[]> {
   if (!pageRes.ok) return [];
 
   const html = await pageRes.text();
-  const match = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
-  );
-  if (!match) return [];
+  const nextData = extractNextData(html);
+  if (!nextData) return [];
 
-  const nextData = JSON.parse(match[1]);
   const pageProps = nextData?.props?.pageProps;
   if (!pageProps) return [];
 
@@ -554,7 +561,7 @@ async function fetchNaverPromotions(): Promise<ProductJson[]> {
     await sleep(300);
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   return products;
 }
 
@@ -637,8 +644,72 @@ async function fetch11stDeals(): Promise<ProductJson[]> {
     }
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   console.log(`[11st] ${products.length} deals fetched`);
+  return products;
+}
+
+/** G마켓/옥션 공통 modules→tabs→components 파서 */
+function parseGianexItems(
+  data: any,
+  source: "gmkt" | "auction",
+  seenIds: Set<string>
+): ProductJson[] {
+  const products: ProductJson[] = [];
+  const mallName = source === "gmkt" ? "G마켓" : "옥션";
+
+  for (const mod of data.modules ?? []) {
+    for (const tab of mod.tabs ?? []) {
+      for (const item of tab.components ?? []) {
+        const itemNo = item.itemNo?.toString();
+        if (!itemNo || seenIds.has(itemNo)) continue;
+        seenIds.add(itemNo);
+
+        const salePrice = Number(item.itemPrice) || 0;
+        const origPrice = Number(item.sellPrice) || 0;
+        const discRate = Number(item.discountRate) || 0;
+        if (salePrice <= 0) continue;
+
+        let imgUrl = item.imageUrl || "";
+        if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+
+        let link: string;
+        if (source === "gmkt") {
+          link = item.itemUrl ? item.itemUrl.split("&utparam-url=")[0] : "";
+          if (!link) link = `https://m.gmarket.co.kr/n/superdeal?goodsCode=${itemNo}`;
+        } else {
+          link = `https://m.auction.co.kr/ItemDetail?itemno=${itemNo}`;
+        }
+
+        products.push({
+          id: `${source === "gmkt" ? "gmkt" : "auction"}_${itemNo}`,
+          title: item.itemName || "",
+          link,
+          imageUrl: imgUrl,
+          currentPrice: salePrice,
+          previousPrice: discRate > 0 && origPrice > salePrice ? origPrice : null,
+          mallName,
+          brand: null,
+          maker: null,
+          category1: mallName,
+          category2: null,
+          category3: null,
+          productType: "1",
+          reviewScore: item.reviewPoint?.starPoint
+            ? Number(item.reviewPoint.starPoint)
+            : null,
+          reviewCount: item.reviewPoint?.reviewCount
+            ? Number(item.reviewPoint.reviewCount)
+            : null,
+          purchaseCount: null,
+          rank: null,
+          isDeliveryFree: item.isFreeShipping === true,
+          isArrivalGuarantee: false,
+          saleEndDate: item.superDealDispInfo?.dispEndDt || null,
+        });
+      }
+    }
+  }
   return products;
 }
 
@@ -647,7 +718,6 @@ async function fetchGmarketDeals(): Promise<ProductJson[]> {
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
-  // 슈퍼딜 (sectionSeq=2) 최대 3페이지
   for (let page = 1; page <= 3; page++) {
     try {
       const res = await fetch(
@@ -656,57 +726,7 @@ async function fetchGmarketDeals(): Promise<ProductJson[]> {
       );
       if (!res.ok) break;
       const data = (await res.json()) as any;
-
-      for (const mod of data.modules ?? []) {
-        for (const tab of mod.tabs ?? []) {
-          for (const item of tab.components ?? []) {
-            const itemNo = item.itemNo?.toString();
-            if (!itemNo || seenIds.has(itemNo)) continue;
-            seenIds.add(itemNo);
-
-            const salePrice = Number(item.itemPrice) || 0;
-            const origPrice = Number(item.sellPrice) || 0;
-            const discRate = Number(item.discountRate) || 0;
-            if (salePrice <= 0) continue;
-
-            let imgUrl = item.imageUrl || "";
-            if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
-
-            // API가 제공하는 URL 사용 (트래킹 파라미터만 제거)
-            let itemLink = item.itemUrl || "";
-            itemLink = itemLink.split("&utparam-url=")[0];
-            if (!itemLink) itemLink = `https://m.gmarket.co.kr/n/superdeal?goodsCode=${itemNo}`;
-
-            products.push({
-              id: `gmkt_${itemNo}`,
-              title: item.itemName || "",
-              link: itemLink,
-              imageUrl: imgUrl,
-              currentPrice: salePrice,
-              previousPrice: discRate > 0 && origPrice > salePrice ? origPrice : null,
-              mallName: "G마켓",
-              brand: null,
-              maker: null,
-              category1: "G마켓",
-              category2: null,
-              category3: null,
-              productType: "1",
-              reviewScore: item.reviewPoint?.starPoint
-                ? Number(item.reviewPoint.starPoint)
-                : null,
-              reviewCount: item.reviewPoint?.reviewCount
-                ? Number(item.reviewPoint.reviewCount)
-                : null,
-              purchaseCount: null,
-              rank: null,
-              isDeliveryFree: item.isFreeShipping === true,
-              isArrivalGuarantee: false,
-              saleEndDate: item.superDealDispInfo?.dispEndDt || null,
-            });
-          }
-        }
-      }
-
+      products.push(...parseGianexItems(data, "gmkt", seenIds));
       if (!data.hasNext) break;
       await sleep(300);
     } catch (e) {
@@ -715,18 +735,16 @@ async function fetchGmarketDeals(): Promise<ProductJson[]> {
     }
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   console.log(`[Gmarket] ${products.length} deals fetched`);
   return products;
 }
 
 async function fetchAuctionDeals(): Promise<ProductJson[]> {
-  // 옥션/G마켓 공유 백엔드 — 동일 API, 별도 sectionSeq 또는 같은 상품을 옥션 링크로
   const BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
-  // sectionSeq=1037 (베스트) — 옥션 베스트 상품
   try {
     const res = await fetch(
       `${BASE}?sectionSeq=1037&pageTypeSeq=1&pagingNumber=1`,
@@ -734,59 +752,13 @@ async function fetchAuctionDeals(): Promise<ProductJson[]> {
     );
     if (res.ok) {
       const data = (await res.json()) as any;
-      for (const mod of data.modules ?? []) {
-        for (const tab of mod.tabs ?? []) {
-          for (const item of tab.components ?? []) {
-            const itemNo = item.itemNo?.toString();
-            if (!itemNo || seenIds.has(itemNo)) continue;
-            seenIds.add(itemNo);
-
-            const salePrice = Number(item.itemPrice) || 0;
-            const origPrice = Number(item.sellPrice) || 0;
-            const discRate = Number(item.discountRate) || 0;
-            if (salePrice <= 0) continue;
-
-            let imgUrl = item.imageUrl || "";
-            if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
-
-            // 옥션 모바일 상품 링크 (브라우저에서 자동 리다이렉트)
-            const auctionLink = `https://m.auction.co.kr/ItemDetail?itemno=${itemNo}`;
-
-            products.push({
-              id: `auction_${itemNo}`,
-              title: item.itemName || "",
-              link: auctionLink,
-              imageUrl: imgUrl,
-              currentPrice: salePrice,
-              previousPrice: discRate > 0 && origPrice > salePrice ? origPrice : null,
-              mallName: "옥션",
-              brand: null,
-              maker: null,
-              category1: "옥션",
-              category2: null,
-              category3: null,
-              productType: "1",
-              reviewScore: item.reviewPoint?.starPoint
-                ? Number(item.reviewPoint.starPoint)
-                : null,
-              reviewCount: item.reviewPoint?.reviewCount
-                ? Number(item.reviewPoint.reviewCount)
-                : null,
-              purchaseCount: null,
-              rank: null,
-              isDeliveryFree: item.isFreeShipping === true,
-              isArrivalGuarantee: false,
-              saleEndDate: item.superDealDispInfo?.dispEndDt || null,
-            });
-          }
-        }
-      }
+      products.push(...parseGianexItems(data, "auction", seenIds));
     }
   } catch (e) {
     console.error("[Auction] error:", e);
   }
 
-  products.sort((a, b) => dropRate(b) - dropRate(a));
+  sortByDropRate(products);
   console.log(`[Auction] ${products.length} deals fetched`);
   return products;
 }
@@ -1209,6 +1181,17 @@ export const dailyBest = onSchedule(
   }
 );
 
+/** 동기화 태스크 정의 (manualSync에서 루프 처리) */
+const SYNC_TASKS: { name: string; fn: () => Promise<unknown[]>; key: string; delay?: number }[] = [
+  { name: "todayDeals",      fn: fetchTodayDeals,      key: "todayDeals" },
+  { name: "shoppingLive",    fn: fetchShoppingLive,     key: "shoppingLive" },
+  { name: "naverPromotions", fn: fetchNaverPromotions,  key: "naverPromotions" },
+  { name: "11stDeals",       fn: fetch11stDeals,        key: "11stDeals" },
+  { name: "gmarketDeals",    fn: fetchGmarketDeals,     key: "gmarketDeals" },
+  { name: "auctionDeals",    fn: fetchAuctionDeals,     key: "auctionDeals" },
+  { name: "keywordRank",     fn: fetchKeywordRank,      key: "keywordRank" },
+];
+
 /**
  * manualSync: 수동 데이터 동기화 (테스트/초기 세팅용)
  * GET /manualSync 으로 호출
@@ -1221,16 +1204,18 @@ export const manualSync = onRequest(
   async (_req, res) => {
     const results: string[] = [];
 
-    // ① 오늘의딜
-    try {
-      const deals = await fetchTodayDeals();
-      await writeCache("todayDeals", deals);
-      results.push(`todayDeals: ${deals.length}`);
-    } catch (e) {
-      results.push(`todayDeals: ERROR ${e}`);
+    // ① 기본 소스 동기화
+    for (const task of SYNC_TASKS) {
+      try {
+        const items = await task.fn();
+        await writeCache(task.key, items);
+        results.push(`${task.name}: ${items.length}`);
+      } catch (e) {
+        results.push(`${task.name}: ERROR ${e}`);
+      }
     }
 
-    // ② BEST100
+    // ② BEST100 (카테고리별)
     for (const categoryId of BEST100_CATEGORIES) {
       try {
         const products = await fetchBest100("PRODUCT_CLICK", categoryId);
@@ -1242,61 +1227,7 @@ export const manualSync = onRequest(
       await sleep(500);
     }
 
-    // ③ 키워드
-    try {
-      const keywords = await fetchKeywordRank();
-      await writeCache("keywordRank", keywords);
-      results.push(`keywordRank: ${keywords.length}`);
-    } catch (e) {
-      results.push(`keywordRank: ERROR ${e}`);
-    }
-
-    // ④ 쇼핑라이브
-    try {
-      const live = await fetchShoppingLive();
-      await writeCache("shoppingLive", live);
-      results.push(`shoppingLive: ${live.length}`);
-    } catch (e) {
-      results.push(`shoppingLive: ERROR ${e}`);
-    }
-
-    // ⑤ 네이버 프로모션
-    try {
-      const promos = await fetchNaverPromotions();
-      await writeCache("naverPromotions", promos);
-      results.push(`naverPromotions: ${promos.length}`);
-    } catch (e) {
-      results.push(`naverPromotions: ERROR ${e}`);
-    }
-
-    // ⑥ 11번가
-    try {
-      const st = await fetch11stDeals();
-      await writeCache("11stDeals", st);
-      results.push(`11stDeals: ${st.length}`);
-    } catch (e) {
-      results.push(`11stDeals: ERROR ${e}`);
-    }
-
-    // ⑦ G마켓
-    try {
-      const gm = await fetchGmarketDeals();
-      await writeCache("gmarketDeals", gm);
-      results.push(`gmarketDeals: ${gm.length}`);
-    } catch (e) {
-      results.push(`gmarketDeals: ERROR ${e}`);
-    }
-
-    // ⑧ 옥션
-    try {
-      const au = await fetchAuctionDeals();
-      await writeCache("auctionDeals", au);
-      results.push(`auctionDeals: ${au.length}`);
-    } catch (e) {
-      results.push(`auctionDeals: ERROR ${e}`);
-    }
-
-    // ⑨ 인기 검색어
+    // ③ 인기 검색어 (카테고리별)
     for (const [name, id] of Object.entries(CATEGORY_MAP)) {
       try {
         const keywords = await fetchPopularKeywords(id, name);

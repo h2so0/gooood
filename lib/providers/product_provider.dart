@@ -1,9 +1,11 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/category_data.dart';
 import '../models/product.dart';
 import '../services/naver_shopping_api.dart';
 import '../services/price_tracker.dart';
+import '../utils/product_classifier.dart';
 
 // ── API & Tracker ──
 
@@ -124,39 +126,34 @@ final trendChartProvider =
 
 // ── 네이버 쇼핑 실제 핫딜 (오늘끝딜 + 타임딜 + BEST100 병합) ──
 
-/// 크로스 소스 중복 제거용: prefix를 제거한 순수 ID 추출
-/// 네이버 소스(deal_/best_/live_/promo_)와 G마켓/옥션(gmkt_/auction_)은
-/// 같은 상품이 다른 prefix로 존재할 수 있음
-String? _extractRawId(String id) {
-  // 네이버 소스: 같은 productId 공유
-  for (final prefix in ['deal_', 'best_', 'live_', 'promo_']) {
-    if (id.startsWith(prefix)) return 'naver_${id.substring(prefix.length)}';
-  }
-  // G마켓/옥션: 같은 itemNo 공유
-  if (id.startsWith('gmkt_')) return 'gianex_${id.substring(5)}';
-  if (id.startsWith('auction_')) return 'gianex_${id.substring(8)}';
-  return null;
+/// 6개 소스 (todayDeals, shoppingLive, naverPromotions, 11st, gmarket, auction) 병렬 fetch
+Future<List<List<Product>>> _fetchAllSources(NaverShoppingApi api) {
+  return Future.wait([
+    api.fetchTodayDeals().catchError((_) => <Product>[]),
+    api.fetchShoppingLive().catchError((_) => <Product>[]),
+    api.fetchNaverPromotions().catchError((_) => <Product>[]),
+    api.fetch11stDeals().catchError((_) => <Product>[]),
+    api.fetchGmarketDeals().catchError((_) => <Product>[]),
+    api.fetchAuctionDeals().catchError((_) => <Product>[]),
+  ]);
 }
 
 /// 오늘끝딜 + BEST100(클릭순) + BEST100(구매순) 병렬 호출하여 병합
 Future<List<Product>> _fetchAllDeals(NaverShoppingApi api) async {
-  final results = await Future.wait([
-    api.fetchTodayDeals().catchError((e) { debugPrint('[HotDeal] todayDeals err: $e'); return <Product>[]; }),
-    api.fetchBest100(sortType: 'PRODUCT_CLICK').catchError((e) { debugPrint('[HotDeal] clickBest err: $e'); return <Product>[]; }),
-    api.fetchBest100(sortType: 'PRODUCT_BUY').catchError((e) { debugPrint('[HotDeal] buyBest err: $e'); return <Product>[]; }),
-    api.fetchShoppingLive().catchError((e) { debugPrint('[HotDeal] shoppingLive err: $e'); return <Product>[]; }),
-    api.fetchNaverPromotions().catchError((e) { debugPrint('[HotDeal] naverPromos err: $e'); return <Product>[]; }),
-    api.fetch11stDeals().catchError((e) { debugPrint('[HotDeal] 11st err: $e'); return <Product>[]; }),
-    api.fetchGmarketDeals().catchError((e) { debugPrint('[HotDeal] gmarket err: $e'); return <Product>[]; }),
-    api.fetchAuctionDeals().catchError((e) { debugPrint('[HotDeal] auction err: $e'); return <Product>[]; }),
+  final sourcesF = _fetchAllSources(api);
+  final bestResults = await Future.wait([
+    api.fetchBest100(sortType: 'PRODUCT_CLICK').catchError((_) => <Product>[]),
+    api.fetchBest100(sortType: 'PRODUCT_BUY').catchError((_) => <Product>[]),
   ]);
+  final sources = await sourcesF;
 
-  debugPrint('[HotDeal] 오늘끝딜=${results[0].length}, 클릭BEST=${results[1].length}, 구매BEST=${results[2].length}, LIVE=${results[3].length}, 프로모=${results[4].length}, 11번가=${results[5].length}, G마켓=${results[6].length}, 옥션=${results[7].length}');
+  debugPrint('[HotDeal] 오늘끝딜=${sources[0].length}, 라이브=${sources[1].length}, 프로모=${sources[2].length}, 11번가=${sources[3].length}, G마켓=${sources[4].length}, 옥션=${sources[5].length}, 클릭BEST=${bestResults[0].length}, 구매BEST=${bestResults[1].length}');
 
-  final all = <Product>[];
-  for (final list in results) {
-    all.addAll(list);
-  }
+  final all = <Product>[
+    for (final list in sources) ...list,
+    ...bestResults[0],
+    ...bestResults[1],
+  ];
 
   // 크로스 소스 중복 제거: 네이버 소스(deal_/best_/live_/promo_)는 같은 productId 공유
   // G마켓/옥션도 같은 itemNo 공유
@@ -164,7 +161,7 @@ Future<List<Product>> _fetchAllDeals(NaverShoppingApi api) async {
   final unique = all.where((p) {
     if (seen.contains(p.id)) return false;
     // 네이버 소스: prefix 제거한 순수 productId로 중복 체크
-    final rawId = _extractRawId(p.id);
+    final rawId = extractRawId(p.id);
     if (rawId != null && seen.contains(rawId)) return false;
     seen.add(p.id);
     if (rawId != null) seen.add(rawId);
@@ -259,118 +256,6 @@ final searchResultsProvider =
 
 // ── 카테고리 (Best100 카테고리별 직접 + 오늘끝딜 분류) ──
 
-/// 앱 카테고리 → 네이버 쇼핑 카테고리 ID
-const _appCategoryIds = <String, String>{
-  '디지털/가전': '50000003',
-  '패션/의류': '50000000',
-  '생활/건강': '50000008',
-  '식품': '50000006',
-  '뷰티': '50000002',
-  '스포츠/레저': '50000007',
-  '출산/육아': '50000005',
-};
-
-/// 네이버 category1/2/3 → 앱 카테고리 매핑
-String? _mapToAppCategory(String cat1, [String? cat2, String? cat3]) {
-  final sub = '${cat2 ?? ''} ${cat3 ?? ''}'.trim();
-  if (sub.contains('반려') || sub.contains('애완') || sub.contains('펫')) {
-    return '반려동물';
-  }
-  if (cat1.contains('디지털') || cat1.contains('가전') || cat1.contains('컴퓨터') ||
-      cat1.contains('휴대폰') || cat1.contains('게임')) return '디지털/가전';
-  if (cat1.contains('패션') || cat1.contains('의류') || cat1.contains('잡화')) return '패션/의류';
-  if (cat1.contains('화장품') || cat1.contains('미용') || cat1.contains('뷰티')) return '뷰티';
-  if (cat1.contains('식품') || cat1.contains('음료')) return '식품';
-  if (cat1.contains('스포츠') || cat1.contains('레저')) return '스포츠/레저';
-  if (cat1.contains('출산') || cat1.contains('육아') || cat1.contains('유아')) return '출산/육아';
-  if (cat1.contains('생활') || cat1.contains('건강') || cat1.contains('가구') ||
-      cat1.contains('인테리어') || cat1.contains('주방') || cat1.contains('문구')) return '생활/건강';
-  return null;
-}
-
-/// 상품 제목 기반 로컬 키워드 매칭으로 카테고리 분류 (API 호출 0회)
-const _categoryKeywords = <String, List<String>>{
-  '디지털/가전': [
-    'TV', '텔레비전', '노트북', '냉장고', '세탁기', '에어컨', '건조기', '청소기',
-    '이어폰', '헤드폰', '스피커', '태블릿', '모니터', '키보드', '마우스', 'SSD',
-    '카메라', '게임', '컴퓨터', '프린터', '공유기', '라우터', '선풍기', '가습기',
-    '제습기', '전자레인지', '오븐', '식기세척기', '밥솥', '에어프라이어', '믹서기',
-    '블렌더', '다리미', '스마트폰', '휴대폰', '핸드폰', '갤럭시', '아이폰',
-    '아이패드', '맥북', '그래픽카드', 'GPU', 'CPU', '메모리', 'RAM', '하드디스크',
-    'HDD', 'USB', '충전기', '보조배터리', '스마트워치', '로봇청소기',
-    '전기면도기', '면도기', '드라이기', '고데기', '전동칫솔', '안마기', '안마의자',
-    '빔프로젝터', '프로젝터', '닌텐도', '플스', 'PS5', '엑스박스',
-  ],
-  '패션/의류': [
-    '원피스', '자켓', '코트', '바지', '셔츠', '블라우스', '니트', '가디건',
-    '운동화', '가방', '지갑', '벨트', '스니커즈', '구두', '샌들', '슬리퍼',
-    '부츠', '모자', '캡', '스카프', '머플러', '장갑', '양말', '넥타이',
-    '정장', '수트', '청바지', '데님', '패딩', '점퍼', '후드', '맨투맨',
-    '티셔츠', '반팔', '긴팔', '레깅스', '치마', '스커트', '백팩', '크로스백',
-    '토트백', '숄더백', '클러치', '선글라스', '시계', '팔찌', '목걸이', '귀걸이',
-    '반지', '액세서리', '주얼리',
-  ],
-  '뷰티': [
-    '화장품', '스킨', '로션', '세럼', '파운데이션', '립스틱', '마스카라',
-    '선크림', '클렌징', '토너', '에센스', '크림', '아이섀도', '블러셔', '치크',
-    '컨실러', '프라이머', '쿠션', '팩트', '립글로스', '립밤', '네일',
-    '매니큐어', '향수', '퍼퓸', '바디로션', '바디워시', '샴푸', '컨디셔너',
-    '린스', '트리트먼트', '헤어오일', '헤어에센스', '마스크팩', '시트마스크',
-    '필링', '스크럽', '미스트', '데오드란트', '제모', '왁싱',
-  ],
-  '식품': [
-    '과일', '고기', '수산', '김치', '라면', '커피', '음료', '견과', '반찬',
-    '간식', '과자', '초콜릿', '캔디', '젤리', '빵', '케이크', '떡', '만두',
-    '국수', '파스타', '소스', '양념', '식용유', '올리브유', '참기름', '소금',
-    '설탕', '밀가루', '쌀', '잡곡', '계란', '달걀', '우유', '두유', '요거트',
-    '치즈', '버터', '햄', '소시지', '참치', '연어', '새우', '오징어',
-    '냉동식품', '즉석식품', '도시락', '선물세트', '홍삼', '꿀', '차', '주스',
-    '탄산수', '생수', '맥주', '와인', '위스키', '소주',
-  ],
-  '생활/건강': [
-    '세제', '휴지', '물티슈', '칫솔', '치약', '비타민', '유산균', '침대',
-    '매트리스', '베개', '이불', '커튼', '러그', '카펫', '수건', '타올',
-    '주방세제', '섬유유연제', '방향제', '탈취제', '살균', '소독', '마스크',
-    '손세정제', '핸드크림', '밴드', '반창고', '체온계', '혈압계', '체중계',
-    '정수기', '공기청정기', '수납', '선반', '행거', '옷걸이', '쓰레기통',
-    '빗자루', '걸레', '장갑', '고무장갑', '전구', 'LED', '조명',
-    '오메가3', '루테인', '프로바이오틱스', '프로틴', '단백질',
-    '콜라겐', '철분', '칼슘', '마그네슘', '아연', '홍삼',
-  ],
-  '스포츠/레저': [
-    '골프', '등산', '자전거', '요가', '헬스', '캠핑', '낚시', '수영',
-    '테니스', '배드민턴', '축구', '농구', '야구', '런닝', '조깅', '트레킹',
-    '등산화', '골프채', '골프공', '텐트', '침낭', '랜턴', '버너', '쿨러',
-    '아이스박스', '낚싯대', '릴', '웨이트', '덤벨', '바벨', '매트',
-    '폼롤러', '짐볼', '밴드', '수영복', '래쉬가드', '고글', '스키',
-    '보드', '스노보드', '인라인', '킥보드', '스쿠터',
-  ],
-  '출산/육아': [
-    '기저귀', '분유', '유모차', '아기', '유아', '어린이', '젖병', '이유식',
-    '물티슈', '아기띠', '카시트', '보행기', '장난감', '블록', '인형',
-    '동화책', '그림책', '아기옷', '바디슈트', '턱받이', '수유', '수유쿠션',
-    '임산부', '산모', '출산', '태교', '아기침대', '범퍼침대', '놀이매트',
-  ],
-  '반려동물': [
-    '강아지', '고양이', '사료', '펫', '반려견', '반려묘', '캣', '독',
-    '간식', '껌', '스낵', '하네스', '목줄', '리드줄', '장난감', '캣타워',
-    '배변패드', '모래', '캣모래', '샴푸', '미용', '빗', '브러시',
-    '이동장', '캐리어', '하우스', '쿨매트', '방석', '침대',
-  ],
-};
-
-String? _classifyByTitle(String title) {
-  final lower = title.toLowerCase();
-  for (final entry in _categoryKeywords.entries) {
-    for (final keyword in entry.value) {
-      if (lower.contains(keyword.toLowerCase())) {
-        return entry.key;
-      }
-    }
-  }
-  return null;
-}
-
 /// 오늘끝딜 카테고리 분류 (캐시 + 동시 요청 방지)
 final _dealCatCache = <String, String>{};
 DateTime? _dealCatCacheTime;
@@ -400,15 +285,7 @@ Future<Map<String, String>> _classifyTodayDeals(NaverShoppingApi api) async {
 
 Future<Map<String, String>> _doClassifyTodayDeals(NaverShoppingApi api) async {
   // 모든 소스에서 상품을 가져와 카테고리 분류 (Firestore 캐시 → 추가 API 호출 없음)
-  final sources = await Future.wait([
-    api.fetchTodayDeals().catchError((_) => <Product>[]),
-    api.fetchShoppingLive().catchError((_) => <Product>[]),
-    api.fetchNaverPromotions().catchError((_) => <Product>[]),
-    api.fetch11stDeals().catchError((_) => <Product>[]),
-    api.fetchGmarketDeals().catchError((_) => <Product>[]),
-    api.fetchAuctionDeals().catchError((_) => <Product>[]),
-  ]);
-
+  final sources = await _fetchAllSources(api);
   final allProducts = sources.expand((l) => l).toList();
   final result = <String, String>{};
 
@@ -420,13 +297,13 @@ Future<Map<String, String>> _doClassifyTodayDeals(NaverShoppingApi api) async {
       continue;
     }
     // 1차: 네이버 카테고리 정보가 있으면 활용
-    final cat = _mapToAppCategory(p.category1, p.category2, p.category3);
+    final cat = mapToAppCategory(p.category1, p.category2, p.category3);
     if (cat != null) {
       result[p.id] = cat;
       continue;
     }
     // 2차: 제목 기반 키워드 매칭
-    final titleCat = _classifyByTitle(p.title);
+    final titleCat = classifyByTitle(p.title);
     if (titleCat != null) {
       result[p.id] = titleCat;
     }
@@ -449,22 +326,14 @@ final categoryDealsProvider =
     if (category == '반려동물') {
       best100 = await api.searchClean(query: '반려동물 인기상품', display: 100);
     } else {
-      final catId = _appCategoryIds[category];
+      final catId = appCategoryIds[category];
       if (catId == null) return [];
       best100 = await api.fetchBest100(categoryId: catId);
     }
 
     // 2. 전체 소스에서 해당 카테고리 상품 추출 (모두 캐시됨)
     final dealCategories = await _classifyTodayDeals(api);
-    final allSources = await Future.wait([
-      api.fetchTodayDeals().catchError((_) => <Product>[]),
-      api.fetchShoppingLive().catchError((_) => <Product>[]),
-      api.fetchNaverPromotions().catchError((_) => <Product>[]),
-      api.fetch11stDeals().catchError((_) => <Product>[]),
-      api.fetchGmarketDeals().catchError((_) => <Product>[]),
-      api.fetchAuctionDeals().catchError((_) => <Product>[]),
-    ]);
-    final allProducts = allSources.expand((l) => l).toList();
+    final allProducts = (await _fetchAllSources(api)).expand((l) => l).toList();
     final matchingDeals = allProducts
         .where((p) =>
             dealCategories[p.id] == category &&

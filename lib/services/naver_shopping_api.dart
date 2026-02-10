@@ -70,25 +70,6 @@ class NaverShoppingApi {
 
   // ── Firestore 캐시 헬퍼 ──
 
-  Future<List<Product>?> _firestoreProducts(String docId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('cache')
-          .doc(docId)
-          .get();
-      if (!doc.exists) return null;
-      final items = (doc.data()?['items'] as List<dynamic>?) ?? [];
-      if (items.isEmpty) return null;
-      return items
-          .map((e) =>
-              Product.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } catch (e) {
-      debugPrint('[Cache] Firestore read $docId error: $e');
-      return null;
-    }
-  }
-
   Future<List<T>?> _firestoreList<T>(
     String docId,
     T Function(Map<String, dynamic>) fromJson,
@@ -342,6 +323,21 @@ class NaverShoppingApi {
     return chartData;
   }
 
+  // ── Firestore-only 캐시 상품 (공통 헬퍼) ──
+
+  Future<List<Product>> _fetchCachedProducts(String key) async {
+    final cached = _cache[key];
+    if (cached != null && !cached.isExpired) {
+      return cached.data as List<Product>;
+    }
+    final firestore = await _firestoreList<Product>(key, Product.fromJson);
+    if (firestore != null) {
+      _cache[key] = _CacheEntry<List<Product>>(firestore);
+      return firestore;
+    }
+    return [];
+  }
+
   // ── 서버 캐시 우선 데이터 (Firestore → API fallback) ──
 
   /// 쇼핑인사이트: 카테고리별 실시간 인기 검색어
@@ -455,7 +451,7 @@ class NaverShoppingApi {
     }
 
     // Firestore 캐시
-    final firestore = await _firestoreProducts('todayDeals');
+    final firestore = await _firestoreList<Product>('todayDeals', Product.fromJson);
     if (firestore != null) {
       _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
       return firestore;
@@ -533,7 +529,7 @@ class NaverShoppingApi {
     }
 
     // Firestore 캐시 (서버는 PRODUCT_CLICK으로 캐싱)
-    final firestore = await _firestoreProducts('best100_$categoryId');
+    final firestore = await _firestoreList<Product>('best100_$categoryId', Product.fromJson);
     if (firestore != null) {
       _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
       return firestore;
@@ -579,89 +575,19 @@ class NaverShoppingApi {
   }
 
   /// 네이버 쇼핑라이브 상품 (Firestore 캐시)
-  Future<List<Product>> fetchShoppingLive() async {
-    const cacheKey = 'shoppingLive';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<Product>;
-    }
-
-    final firestore = await _firestoreProducts('shoppingLive');
-    if (firestore != null) {
-      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
-      return firestore;
-    }
-
-    return [];
-  }
+  Future<List<Product>> fetchShoppingLive() => _fetchCachedProducts('shoppingLive');
 
   /// 네이버 프로모션 (Firestore 캐시)
-  Future<List<Product>> fetchNaverPromotions() async {
-    const cacheKey = 'naverPromotions';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<Product>;
-    }
-
-    final firestore = await _firestoreProducts('naverPromotions');
-    if (firestore != null) {
-      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
-      return firestore;
-    }
-
-    return [];
-  }
+  Future<List<Product>> fetchNaverPromotions() => _fetchCachedProducts('naverPromotions');
 
   /// 11번가 딜 (Firestore 캐시)
-  Future<List<Product>> fetch11stDeals() async {
-    const cacheKey = '11stDeals';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<Product>;
-    }
-
-    final firestore = await _firestoreProducts('11stDeals');
-    if (firestore != null) {
-      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
-      return firestore;
-    }
-
-    return [];
-  }
+  Future<List<Product>> fetch11stDeals() => _fetchCachedProducts('11stDeals');
 
   /// G마켓 슈퍼딜 (Firestore 캐시)
-  Future<List<Product>> fetchGmarketDeals() async {
-    const cacheKey = 'gmarketDeals';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<Product>;
-    }
-
-    final firestore = await _firestoreProducts('gmarketDeals');
-    if (firestore != null) {
-      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
-      return firestore;
-    }
-
-    return [];
-  }
+  Future<List<Product>> fetchGmarketDeals() => _fetchCachedProducts('gmarketDeals');
 
   /// 옥션 딜 (Firestore 캐시)
-  Future<List<Product>> fetchAuctionDeals() async {
-    const cacheKey = 'auctionDeals';
-    final cached = _cache[cacheKey];
-    if (cached != null && !cached.isExpired) {
-      return cached.data as List<Product>;
-    }
-
-    final firestore = await _firestoreProducts('auctionDeals');
-    if (firestore != null) {
-      _cache[cacheKey] = _CacheEntry<List<Product>>(firestore);
-      return firestore;
-    }
-
-    return [];
-  }
+  Future<List<Product>> fetchAuctionDeals() => _fetchCachedProducts('auctionDeals');
 
   /// 네이버 BEST 키워드 랭킹 (순위 변동 포함)
   Future<List<TrendKeyword>> fetchKeywordRank() async {
