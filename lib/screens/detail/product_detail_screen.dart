@@ -213,10 +213,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               onTap: () async {
                 if (p.link.isNotEmpty) {
                   final uri = Uri.parse(p.link);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri,
-                        mode: LaunchMode.externalApplication);
-                  }
+                  await launchUrl(uri,
+                      mode: LaunchMode.externalApplication);
                 }
               },
             ),

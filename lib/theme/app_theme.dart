@@ -115,7 +115,6 @@ class TteolgaTheme {
       colorScheme: brightness == Brightness.dark
           ? ColorScheme.dark(primary: drop, surface: surface)
           : ColorScheme.light(primary: drop, surface: surface),
-      fontFamily: 'Pretendard',
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,

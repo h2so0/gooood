@@ -9,7 +9,6 @@ import '../../providers/trend_provider.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/product_card.dart';
-import '../../widgets/product_image.dart';
 import '../../widgets/coupang_banner.dart';
 import '../search_screen.dart';
 import 'rolling_keywords.dart';
@@ -31,7 +30,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
     final t = ref.watch(tteolgaThemeProvider);
     final hotProducts = ref.watch(hotProductsProvider);
     final trendKeywords = ref.watch(trendKeywordsProvider);
-    final droppedProducts = ref.watch(droppedProductsProvider);
 
     return RefreshIndicator(
       color: t.textPrimary,
@@ -39,7 +37,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
       onRefresh: () async {
         ref.invalidate(hotProductsProvider);
         ref.invalidate(trendKeywordsProvider);
-        ref.invalidate(droppedProductsProvider);
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(
@@ -57,15 +54,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
           ),
 
           const SizedBox(height: 16),
-
-          droppedProducts.when(
-            data: (dropped) {
-              if (dropped.isEmpty) return const SizedBox();
-              return _buildDroppedSection(t, dropped);
-            },
-            loading: () => const SizedBox(),
-            error: (_, __) => const SizedBox(),
-          ),
 
           const CoupangBanner(),
           const SizedBox(height: 20),
@@ -289,103 +277,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildDroppedSection(TteolgaTheme t, List<Product> dropped) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle(t, '가격 하락'),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 160,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: dropped.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, i) {
-              final p = dropped[i];
-              return GestureDetector(
-                onTap: () => widget.onTap(p),
-                child: Container(
-                  width: 130,
-                  decoration: BoxDecoration(
-                    color: t.card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: t.border, width: 0.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(12)),
-                        child: SizedBox(
-                          height: 90,
-                          width: double.infinity,
-                          child: ProductImage(
-                            imageUrl: p.imageUrl,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              p.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: t.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                if (p.dropRate > 0) ...[
-                                  Text(
-                                    '-${p.dropRate.toStringAsFixed(0)}%',
-                                    style: TextStyle(
-                                      color: t.drop,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                ],
-                                Flexible(
-                                  child: Text(
-                                    formatPrice(p.currentPrice),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: t.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
     );
   }
 
