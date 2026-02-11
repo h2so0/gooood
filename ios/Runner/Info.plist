@@ -52,5 +52,9 @@
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.goooood.app.background</string>
+	</array>
 </dict>
 </plist>
