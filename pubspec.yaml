@@ -1,7 +1,7 @@
 name: gooddeal
 description: "굿딜 - 최저가 쇼핑 가격 추적 앱"
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.10.7
