@@ -6,20 +6,29 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
-import 'screens/splash_screen.dart';
+import 'screens/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Hive.initFlutter();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  if (!kIsWeb) {
-    final notiService = NotificationService();
-    await notiService.initialize();
-    await notiService.requestPermission();
-    await notiService.subscribeInitialTopics();
+  try {
+    await Hive.initFlutter();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    if (!kIsWeb) {
+      try {
+        final notiService = NotificationService();
+        await notiService.initialize();
+        await notiService.requestPermission();
+        await notiService.subscribeInitialTopics();
+      } catch (e) {
+        debugPrint('[Init] NotificationService 초기화 실패: $e');
+      }
+    }
+  } catch (e) {
+    debugPrint('[Init] 앱 초기화 실패: $e');
   }
 
   runApp(const ProviderScope(child: TteolgaApp()));
@@ -36,7 +45,7 @@ class TteolgaApp extends ConsumerWidget {
       title: '굿딜',
       debugShowCheckedModeBanner: false,
       theme: t.toThemeData(),
-      home: const SplashScreen(),
+      home: const MainScreen(),
     );
   }
 }

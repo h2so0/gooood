@@ -23,6 +23,7 @@ class DealCategoryClassifier {
     _pending = null;
   }
 
+  /// API에서 소스를 가져와 분류 (캐시 우선)
   Future<Map<String, String>> classify(NaverShoppingApi api) async {
     if (_cacheTime != null &&
         DateTime.now().difference(_cacheTime!) <
@@ -39,11 +40,26 @@ class DealCategoryClassifier {
     }
   }
 
-  Future<Map<String, String>> _doClassify(NaverShoppingApi api) async {
-    final sources = await fetchAllSources(api);
-    final allProducts = sources.expand((l) => l).toList();
-    final result = <String, String>{};
+  /// 이미 가져온 소스 데이터로 분류 (중복 요청 방지)
+  Map<String, String> classifyFromProducts(List<Product> products) {
+    if (_cacheTime != null &&
+        DateTime.now().difference(_cacheTime!) <
+            const Duration(minutes: 30) &&
+        _cache.isNotEmpty) {
+      return _cache;
+    }
 
+    final result = _classifyProducts(products);
+    debugPrint('[Category] 전체 분류: ${result.length}/${products.length}');
+    _cache
+      ..clear()
+      ..addAll(result);
+    _cacheTime = DateTime.now();
+    return result;
+  }
+
+  Map<String, String> _classifyProducts(List<Product> allProducts) {
+    final result = <String, String>{};
     for (final p in allProducts) {
       if (p.id.startsWith('promo_')) {
         result[p.id] = '프로모션';
@@ -59,6 +75,13 @@ class DealCategoryClassifier {
         result[p.id] = titleCat;
       }
     }
+    return result;
+  }
+
+  Future<Map<String, String>> _doClassify(NaverShoppingApi api) async {
+    final sources = await fetchAllSources(api);
+    final allProducts = sources.expand((l) => l).toList();
+    final result = _classifyProducts(allProducts);
 
     debugPrint(
         '[Category] 전체 분류: ${result.length}/${allProducts.length} '

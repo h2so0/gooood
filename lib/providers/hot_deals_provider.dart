@@ -20,13 +20,21 @@ Future<List<List<Product>>> fetchAllSources(NaverShoppingApi api) {
 }
 
 /// 오늘끝딜 + BEST100 병렬 호출하여 병합
-Future<List<Product>> fetchAllDeals(NaverShoppingApi api) async {
+/// [sourcesCallback]이 전달되면 가져온 소스 데이터를 전달 (classify 재사용용)
+Future<List<Product>> fetchAllDeals(
+  NaverShoppingApi api, {
+  void Function(List<Product> allSourceProducts)? sourcesCallback,
+}) async {
   final sourcesF = fetchAllSources(api);
   final bestResults = await Future.wait([
     api.fetchBest100(sortType: 'PRODUCT_CLICK').catchError((_) => <Product>[]),
     api.fetchBest100(sortType: 'PRODUCT_BUY').catchError((_) => <Product>[]),
   ]);
   final sources = await sourcesF;
+
+  // 소스 데이터를 콜백으로 전달 (classify에서 재사용)
+  final sourceProducts = sources.expand((l) => l).toList();
+  sourcesCallback?.call(sourceProducts);
 
   debugPrint(
       '[HotDeal] 오늘끝딜=${sources[0].length}, 라이브=${sources[1].length}, '
@@ -57,7 +65,11 @@ Future<List<Product>> fetchAllDeals(NaverShoppingApi api) async {
 final hotProductsProvider = FutureProvider<List<Product>>((ref) async {
   try {
     final api = ref.read(naverApiProvider);
-    final deals = await fetchAllDeals(api);
+    List<Product>? sourceProducts;
+    final deals = await fetchAllDeals(
+      api,
+      sourcesCallback: (products) => sourceProducts = products,
+    );
     final filtered = deals
         .where((p) => p.dropRate > 0 || p.id.startsWith('best_'))
         .toList();
@@ -65,7 +77,10 @@ final hotProductsProvider = FutureProvider<List<Product>>((ref) async {
         filtered.where((p) => p.id.startsWith('best_')).length;
     debugPrint(
         '[HotDeal] 필터 후: total=${filtered.length}, best=$bestCount');
-    DealCategoryClassifier.instance.classify(api);
+    // 이미 가져온 소스 데이터로 분류 (중복 네트워크 요청 방지)
+    if (sourceProducts != null) {
+      DealCategoryClassifier.instance.classifyFromProducts(sourceProducts!);
+    }
     return filtered;
   } catch (e) {
     debugPrint('[HotDeal] ERROR: $e');
