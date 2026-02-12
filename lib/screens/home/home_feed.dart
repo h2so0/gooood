@@ -55,7 +55,7 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
       color: t.textPrimary,
       backgroundColor: t.card,
       onRefresh: () async {
-        ref.read(hotProductsProvider.notifier).refresh();
+        await ref.read(hotProductsProvider.notifier).refresh();
         ref.invalidate(trendKeywordsProvider);
       },
       child: ListView(

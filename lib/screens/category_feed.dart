@@ -48,24 +48,11 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
     final state = ref.watch(categoryProductsProvider(widget.category));
     final items = state.products;
 
-    if (items.isEmpty && state.isLoading) {
-      return Center(
-        child: CircularProgressIndicator(color: t.textTertiary),
-      );
-    }
-
-    if (items.isEmpty) {
-      return Center(
-        child: Text('상품이 없습니다',
-            style: TextStyle(color: t.textTertiary)),
-      );
-    }
-
     return RefreshIndicator(
       color: t.textPrimary,
       backgroundColor: t.card,
       onRefresh: () async {
-        ref
+        await ref
             .read(categoryProductsProvider(widget.category).notifier)
             .refresh();
       },
@@ -74,31 +61,46 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
         physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics()),
         slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            sliver: SliverMasonryGrid.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childCount: items.length,
-              itemBuilder: (context, i) => ProductGridCard(
-                product: items[i],
-                onTap: () => widget.onTap(items[i]),
+          if (items.isEmpty && state.isLoading)
+            SliverFillRemaining(
+              child: Center(
+                child: CircularProgressIndicator(color: t.textTertiary),
+              ),
+            )
+          else if (items.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Text('상품이 없습니다',
+                    style: TextStyle(color: t.textTertiary)),
+              ),
+            )
+          else ...[
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              sliver: SliverMasonryGrid.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childCount: items.length,
+                itemBuilder: (context, i) => ProductGridCard(
+                  product: items[i],
+                  onTap: () => widget.onTap(items[i]),
+                ),
               ),
             ),
-          ),
-          if (state.isLoading && state.hasMore)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                    child:
-                        CircularProgressIndicator(color: t.textTertiary)),
+            if (state.isLoading && state.hasMore)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                      child:
+                          CircularProgressIndicator(color: t.textTertiary)),
+                ),
               ),
+            const SliverToBoxAdapter(
+              child: SizedBox(height: 40),
             ),
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 40),
-          ),
+          ],
         ],
       ),
     );

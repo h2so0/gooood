@@ -75,8 +75,28 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> refresh() async {
-    state = const ProductListState();
-    await fetchNextPage();
+    state = state.copyWith(isLoading: true, hasMore: true, clearLastDocument: true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where('dropRate', isGreaterThan: 0)
+          .orderBy('dropRate', descending: true)
+          .limit(_pageSize)
+          .get();
+      final newProducts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return Product.fromJson(data);
+      }).toList();
+      state = ProductListState(
+        products: newProducts,
+        isLoading: false,
+        hasMore: newProducts.length >= _pageSize,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
+    } catch (e) {
+      debugPrint('[HotProducts] refresh error: $e');
+      state = state.copyWith(isLoading: false);
+    }
   }
 }
 
@@ -123,8 +143,28 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> refresh() async {
-    state = const ProductListState();
-    await fetchNextPage();
+    state = state.copyWith(isLoading: true, hasMore: true, clearLastDocument: true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where('category', isEqualTo: category)
+          .orderBy('dropRate', descending: true)
+          .limit(_pageSize)
+          .get();
+      final newProducts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return Product.fromJson(data);
+      }).toList();
+      state = ProductListState(
+        products: newProducts,
+        isLoading: false,
+        hasMore: newProducts.length >= _pageSize,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
+    } catch (e) {
+      debugPrint('[CategoryProducts] refresh error: $e');
+      state = state.copyWith(isLoading: false);
+    }
   }
 }
 
