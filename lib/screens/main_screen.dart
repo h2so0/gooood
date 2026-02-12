@@ -27,7 +27,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     '뷰티',
     '스포츠/레저',
     '출산/육아',
-    '반려동물',
   ];
 
   @override

@@ -4,10 +4,8 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
 import '../../models/trend_data.dart';
 import '../../theme/app_theme.dart';
-import '../../providers/hot_deals_provider.dart';
+import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
-import '../../providers/viewed_products_provider.dart';
-import '../../utils/formatters.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/coupang_banner.dart';
 import '../search_screen.dart';
@@ -24,21 +22,44 @@ class HomeFeed extends ConsumerStatefulWidget {
 
 class _HomeFeedState extends ConsumerState<HomeFeed> {
   bool _trendExpanded = false;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 500) {
+      ref.read(hotProductsProvider.notifier).fetchNextPage();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
-    final hotProducts = ref.watch(hotProductsProvider);
+    final hotState = ref.watch(hotProductsProvider);
     final trendKeywords = ref.watch(trendKeywordsProvider);
+    final products = hotState.products;
 
     return RefreshIndicator(
       color: t.textPrimary,
       backgroundColor: t.card,
       onRefresh: () async {
-        ref.invalidate(hotProductsProvider);
+        ref.read(hotProductsProvider.notifier).refresh();
         ref.invalidate(trendKeywordsProvider);
       },
       child: ListView(
+        controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics()),
         padding: EdgeInsets.zero,
@@ -60,45 +81,44 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
 
           _sectionTitle(t, '오늘의 핫딜'),
           const SizedBox(height: 8),
-          hotProducts.when(
-            data: (products) {
-              if (products.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text('핫딜 상품을 불러오는 중...',
-                      style:
-                          TextStyle(color: t.textTertiary, fontSize: 13)),
-                );
-              }
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: MasonryGridView.count(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  itemCount: products.length,
-                  itemBuilder: (context, i) => ProductGridCard(
-                    product: products[i],
-                    onTap: () => widget.onTap(products[i]),
-                  ),
-                ),
-              );
-            },
-            loading: () => SizedBox(
+          if (products.isEmpty && hotState.isLoading)
+            SizedBox(
               height: 200,
               child: Center(
                   child:
                       CircularProgressIndicator(color: t.textTertiary)),
-            ),
-            error: (_, __) => Padding(
+            )
+          else if (products.isEmpty)
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('불러오기 실패',
-                  style: TextStyle(color: t.textSecondary)),
+              child: Text('핫딜 상품을 불러오는 중...',
+                  style:
+                      TextStyle(color: t.textTertiary, fontSize: 13)),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: MasonryGridView.count(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                itemCount: products.length,
+                itemBuilder: (context, i) => ProductGridCard(
+                  product: products[i],
+                  onTap: () => widget.onTap(products[i]),
+                ),
+              ),
             ),
-          ),
+          if (hotState.isLoading && hotState.hasMore && products.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                  child:
+                      CircularProgressIndicator(color: t.textTertiary)),
+            ),
           const SizedBox(height: 40),
         ],
       ),

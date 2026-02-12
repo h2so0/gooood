@@ -7,6 +7,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // products: 앱에서 읽기만 허용 (서버가 쓰기)
+    match /products/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // sent_notifications: 서버(Cloud Functions)만 읽기/쓰기
     match /sent_notifications/{doc} {
       allow read, write: if false;

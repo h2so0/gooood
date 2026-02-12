@@ -151,59 +151,6 @@ class Product {
     return null;
   }
 
-  /// 네이버 쇼핑 오늘끝딜/스페셜딜 데이터에서 생성
-  factory Product.fromTodayDeal(Map<String, dynamic> json) {
-    final salePrice = (json['salePrice'] as num?)?.toInt() ?? 0;
-    final discountedPrice = (json['discountedPrice'] as num?)?.toInt() ?? salePrice;
-    final discountedRatio = (json['discountedRatio'] as num?)?.toInt() ?? 0;
-
-    // labelText에서 상점/딜 타입 추출 (줄바꿈 제거)
-    final label = (json['labelText'] as String?)?.replaceAll('\n', ' ').trim() ?? '';
-
-    return Product(
-      id: 'deal_${json['productId']?.toString() ?? ''}',
-      title: json['name'] ?? '',
-      link: json['landingUrl'] ?? '',
-      imageUrl: json['imageUrl'] ?? '',
-      currentPrice: discountedRatio > 0 ? discountedPrice : salePrice,
-      previousPrice: discountedRatio > 0 ? salePrice : null,
-      mallName: label.isNotEmpty ? label : '스마트스토어',
-      category1: '오늘의딜',
-      productType: '1',
-      reviewScore: (json['averageReviewScore'] as num?)?.toDouble(),
-      reviewCount: (json['totalReviewCount'] as num?)?.toInt(),
-      purchaseCount: (json['cumulationSaleCount'] as num?)?.toInt(),
-      isDeliveryFree: json['isDeliveryFree'] == true,
-      isArrivalGuarantee: json['isArrivalGuarantee'] == true,
-      saleEndDate: json['saleEndDate']?.toString(),
-    );
-  }
-
-  /// 네이버 쇼핑 BEST100 데이터에서 생성
-  factory Product.fromBest100(Map<String, dynamic> json) {
-    final discountPrice = (json['discountPriceValue'] as num?)?.toInt() ?? 0;
-    final originalPrice = (json['priceValue'] as num?)?.toInt() ?? 0;
-    final price = discountPrice > 0 ? discountPrice : originalPrice;
-    final discountRate = int.tryParse(json['discountRate']?.toString() ?? '0') ?? 0;
-
-    return Product(
-      id: 'best_${json['productId']?.toString() ?? ''}',
-      title: json['title'] ?? '',
-      link: json['linkUrl'] ?? '',
-      imageUrl: json['imageUrl'] ?? '',
-      currentPrice: price,
-      previousPrice: discountRate > 0 ? originalPrice : null,
-      mallName: json['mallNm']?.toString() ?? 'BEST100',
-      category1: 'BEST100',
-      productType: '1',
-      reviewCount: int.tryParse(json['reviewCount']?.toString().replaceAll(',', '') ?? ''),
-      reviewScore: double.tryParse(json['reviewScore']?.toString() ?? ''),
-      rank: (json['rank'] as num?)?.toInt(),
-      isDeliveryFree: json['deliveryFeeType'] == 'FREE',
-      isArrivalGuarantee: json['isArrivalGuarantee'] == true,
-    );
-  }
-
   factory Product.fromNaverApi(Map<String, dynamic> json) {
     final title = (json['title'] as String)
         .replaceAll(RegExp(r'<[^>]*>'), '');

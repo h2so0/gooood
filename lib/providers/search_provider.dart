@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 import 'api_providers.dart';
-import 'hot_deals_provider.dart';
+import 'product_list_provider.dart';
 
 final searchResultsProvider =
     FutureProvider.family<List<Product>, String>((ref, query) async {
@@ -13,11 +13,9 @@ final searchResultsProvider =
     List<Product> hotMatches = [];
     try {
       final hotState = ref.read(hotProductsProvider);
-      hotState.whenData((products) {
-        hotMatches = products
-            .where((p) => p.title.toLowerCase().contains(queryLower))
-            .toList();
-      });
+      hotMatches = hotState.products
+          .where((p) => p.title.toLowerCase().contains(queryLower))
+          .toList();
     } catch (_) {}
 
     final searchResults = await api.searchClean(query: query, display: 40);

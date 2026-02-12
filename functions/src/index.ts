@@ -9,8 +9,8 @@ admin.initializeApp();
 // 설정
 // ──────────────────────────────────────────
 
-const NAVER_CLIENT_ID = "hiD1em_BVH7_sHIirwVD";
-const NAVER_CLIENT_SECRET = "b6yEA6sv6W";
+const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || "";
+const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || "";
 const NAVER_SHOP_URL = "https://openapi.naver.com/v1/search/shop.json";
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -84,6 +84,232 @@ function dropRate(p: ProductJson): number {
 
 function sortByDropRate(products: ProductJson[]): void {
   products.sort((a, b) => dropRate(b) - dropRate(a));
+}
+
+// ──────────────────────────────────────────
+// 카테고리 분류 (Gemini AI)
+// ──────────────────────────────────────────
+
+const VALID_CATEGORIES = [
+  "디지털/가전", "패션/의류", "생활/건강", "식품",
+  "뷰티", "스포츠/레저", "출산/육아",
+];
+
+function mapToAppCategory(
+  cat1: string,
+  cat2?: string | null,
+  cat3?: string | null
+): string | null {
+  if (
+    cat1.includes("디지털") || cat1.includes("가전") ||
+    cat1.includes("컴퓨터") || cat1.includes("휴대폰") || cat1.includes("게임")
+  ) {
+    return "디지털/가전";
+  }
+  if (cat1.includes("패션") || cat1.includes("의류") || cat1.includes("잡화")) {
+    return "패션/의류";
+  }
+  if (
+    cat1.includes("화장품") || cat1.includes("미용") || cat1.includes("뷰티")
+  ) {
+    return "뷰티";
+  }
+  if (cat1.includes("식품") || cat1.includes("음료")) {
+    return "식품";
+  }
+  if (cat1.includes("스포츠") || cat1.includes("레저")) {
+    return "스포츠/레저";
+  }
+  if (
+    cat1.includes("출산") || cat1.includes("육아") || cat1.includes("유아")
+  ) {
+    return "출산/육아";
+  }
+  if (
+    cat1.includes("생활") || cat1.includes("건강") || cat1.includes("가구") ||
+    cat1.includes("인테리어") || cat1.includes("주방") || cat1.includes("문구")
+  ) {
+    return "생활/건강";
+  }
+  return null;
+}
+
+async function classifyWithGemini(titles: string[]): Promise<string[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn("[classify] GEMINI_API_KEY not set, defaulting to 생활/건강");
+    return titles.map(() => "생활/건강");
+  }
+
+  const prompt = `다음 쇼핑 상품 ${titles.length}개를 카테고리로 분류하세요.
+
+카테고리 (반드시 이 중 하나만 선택):
+${VALID_CATEGORIES.join(", ")}
+
+상품:
+${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}
+
+정확히 ${titles.length}개의 카테고리를 JSON 문자열 배열로 응답하세요.`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 4096,
+            responseMimeType: "application/json",
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error(`[classify] Gemini API ${res.status}: ${await res.text()}`);
+      return titles.map(() => "생활/건강");
+    }
+
+    const data = (await res.json()) as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    const parsed = JSON.parse(text);
+    const categories: string[] = Array.isArray(parsed) ? parsed : [];
+
+    return titles.map((_, i) => {
+      const cat = categories[i];
+      return VALID_CATEGORIES.includes(cat) ? cat : "생활/건강";
+    });
+  } catch (e) {
+    console.error("[classify] Gemini error:", e);
+    return titles.map(() => "생활/건강");
+  }
+}
+
+// ──────────────────────────────────────────
+// 소스 추출 + 중복제거 + products/ 저장
+// ──────────────────────────────────────────
+
+function extractRawId(id: string): string | null {
+  for (const prefix of ["deal_", "best_", "live_", "promo_"]) {
+    if (id.startsWith(prefix)) return `naver_${id.substring(prefix.length)}`;
+  }
+  if (id.startsWith("gmkt_")) return `gianex_${id.substring(5)}`;
+  if (id.startsWith("auction_")) return `gianex_${id.substring(8)}`;
+  return null;
+}
+
+function sanitizeDocId(id: string): string {
+  return id.replace(/[\/\.\#\$\[\]]/g, "_");
+}
+
+async function writeProducts(
+  products: ProductJson[],
+  source: string
+): Promise<number> {
+  if (products.length === 0) return 0;
+
+  // rawId 기준 중복 제거 (높은 dropRate 우선)
+  const bestByRawId = new Map<string, ProductJson>();
+  const noRawId: ProductJson[] = [];
+
+  for (const p of products) {
+    const rawId = extractRawId(p.id);
+    if (rawId) {
+      const existing = bestByRawId.get(rawId);
+      if (!existing || dropRate(p) > dropRate(existing)) {
+        bestByRawId.set(rawId, p);
+      }
+    } else {
+      noRawId.push(p);
+    }
+  }
+
+  const unique = [...bestByRawId.values(), ...noRawId];
+
+  // ── 카테고리 분류 ──
+  // 1단계: API 카테고리 데이터로 분류
+  const categoryResult = new Map<ProductJson, string>();
+  const needsAI: ProductJson[] = [];
+
+  for (const p of unique) {
+    const cat = mapToAppCategory(p.category1, p.category2, p.category3);
+    if (cat) {
+      categoryResult.set(p, cat);
+    } else {
+      needsAI.push(p);
+    }
+  }
+
+  // 2단계: Gemini로 나머지 분류 (100개씩 배치)
+  if (needsAI.length > 0) {
+    const AI_BATCH = 100;
+    for (let i = 0; i < needsAI.length; i += AI_BATCH) {
+      const aiBatch = needsAI.slice(i, i + AI_BATCH);
+      const titles = aiBatch.map((p) => p.title);
+      const categories = await classifyWithGemini(titles);
+      aiBatch.forEach((p, idx) => {
+        categoryResult.set(p, categories[idx]);
+      });
+      if (i + AI_BATCH < needsAI.length) await sleep(1000);
+    }
+  }
+
+  // ── Firestore 저장 ──
+  const db = admin.firestore();
+  const BATCH_LIMIT = 500;
+  let written = 0;
+
+  for (let i = 0; i < unique.length; i += BATCH_LIMIT) {
+    const batch = db.batch();
+    const chunk = unique.slice(i, i + BATCH_LIMIT);
+
+    for (const p of chunk) {
+      const rawId = extractRawId(p.id);
+      const docId = sanitizeDocId(rawId ?? p.id);
+      const ref = db.collection("products").doc(docId);
+
+      batch.set(ref, {
+        ...p,
+        category: categoryResult.get(p) || "생활/건강",
+        dropRate: dropRate(p),
+        source,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    written += chunk.length;
+  }
+
+  console.log(
+    `[writeProducts] ${source}: ${written} products (${needsAI.length} AI-classified)`
+  );
+  return written;
+}
+
+async function cleanupOldProducts(): Promise<number> {
+  const db = admin.firestore();
+  const cutoff = new Date();
+  cutoff.setHours(cutoff.getHours() - 24);
+
+  const oldSnap = await db
+    .collection("products")
+    .where("updatedAt", "<", cutoff)
+    .limit(200)
+    .get();
+
+  if (oldSnap.empty) return 0;
+
+  const batch = db.batch();
+  oldSnap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+
+  console.log(`[cleanup] Deleted ${oldSnap.size} old products`);
+  return oldSnap.size;
 }
 
 /** Extract __NEXT_DATA__ JSON from an HTML page */
@@ -203,7 +429,8 @@ async function fetchTodayDeals(): Promise<ProductJson[]> {
 
 async function fetchBest100(
   sortType: string,
-  categoryId: string
+  categoryId: string,
+  naverCategoryName?: string,
 ): Promise<ProductJson[]> {
   const res = await fetch(
     `https://snxbest.naver.com/api/v1/snxbest/product/rank?ageType=ALL&categoryId=${categoryId}&sortType=${sortType}&periodType=DAILY`,
@@ -241,7 +468,7 @@ async function fetchBest100(
       mallName: item.mallNm || "BEST100",
       brand: null,
       maker: null,
-      category1: "BEST100",
+      category1: naverCategoryName || "BEST100",
       category2: null,
       category3: null,
       productType: "1",
@@ -649,6 +876,8 @@ async function fetch11stDeals(): Promise<ProductJson[]> {
   return products;
 }
 
+const GIANEX_API_BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
+
 /** G마켓/옥션 공통 modules→tabs→components 파서 */
 function parseGianexItems(
   data: any,
@@ -714,14 +943,13 @@ function parseGianexItems(
 }
 
 async function fetchGmarketDeals(): Promise<ProductJson[]> {
-  const BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
   for (let page = 1; page <= 3; page++) {
     try {
       const res = await fetch(
-        `${BASE}?sectionSeq=2&pageTypeSeq=1&pagingNumber=${page}`,
+        `${GIANEX_API_BASE}?sectionSeq=2&pageTypeSeq=1&pagingNumber=${page}`,
         { headers: { Accept: "application/json", ...COMMON_HEADERS } }
       );
       if (!res.ok) break;
@@ -741,13 +969,12 @@ async function fetchGmarketDeals(): Promise<ProductJson[]> {
 }
 
 async function fetchAuctionDeals(): Promise<ProductJson[]> {
-  const BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
   try {
     const res = await fetch(
-      `${BASE}?sectionSeq=1037&pageTypeSeq=1&pagingNumber=1`,
+      `${GIANEX_API_BASE}?sectionSeq=1037&pageTypeSeq=1&pagingNumber=1`,
       { headers: { Accept: "application/json", ...COMMON_HEADERS } }
     );
     if (res.ok) {
@@ -851,13 +1078,14 @@ export const syncDeals = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
+    secrets: ["GEMINI_API_KEY", "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
   },
   async () => {
     const products = await fetchTodayDeals();
     console.log(`Fetched ${products.length} today deals`);
 
-    // ① Firestore 캐시
-    await writeCache("todayDeals", products);
+    // ① products/ 컬렉션에 저장
+    await writeProducts(products, "todayDeal");
 
     // ② 핫딜 알림
     const hotDeals = products.filter((p) => dropRate(p) >= 30);
@@ -968,6 +1196,9 @@ export const syncDeals = onSchedule(
       oldSnap.docs.forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
+
+    // ⑤ 24시간 이상 오래된 products 삭제
+    await cleanupOldProducts();
   }
 );
 
@@ -981,14 +1212,16 @@ export const syncBest100 = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
+    secrets: ["GEMINI_API_KEY"],
   },
   async () => {
     for (const categoryId of BEST100_CATEGORIES) {
       try {
-        const products = await fetchBest100("PRODUCT_CLICK", categoryId);
-        await writeCache(`best100_${categoryId}`, products);
+        const catName = CATEGORY_NAME_MAP[categoryId];
+        const products = await fetchBest100("PRODUCT_CLICK", categoryId, catName);
+        await writeProducts(products, "best100");
         console.log(
-          `Cached best100_${categoryId}: ${products.length} products`
+          `Synced best100_${categoryId}: ${products.length} products`
         );
       } catch (e) {
         console.error(`Failed best100 ${categoryId}:`, e);
@@ -1048,12 +1281,13 @@ export const syncShoppingLive = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 60,
+    secrets: ["GEMINI_API_KEY"],
   },
   async () => {
     try {
       const products = await fetchShoppingLive();
-      await writeCache("shoppingLive", products);
-      console.log(`Cached shoppingLive: ${products.length} products`);
+      await writeProducts(products, "shoppingLive");
+      console.log(`Synced shoppingLive: ${products.length} products`);
     } catch (e) {
       console.error("Failed shoppingLive:", e);
     }
@@ -1070,12 +1304,13 @@ export const syncPromotions = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 60,
+    secrets: ["GEMINI_API_KEY"],
   },
   async () => {
     try {
       const promos = await fetchNaverPromotions();
-      await writeCache("naverPromotions", promos);
-      console.log(`Cached naverPromotions: ${promos.length} products`);
+      await writeProducts(promos, "naverPromo");
+      console.log(`Synced naverPromotions: ${promos.length} products`);
     } catch (e) {
       console.error("Failed naverPromotions:", e);
     }
@@ -1092,28 +1327,29 @@ export const syncExternalDeals = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
+    secrets: ["GEMINI_API_KEY"],
   },
   async () => {
     try {
       const st = await fetch11stDeals();
-      await writeCache("11stDeals", st);
-      console.log(`Cached 11stDeals: ${st.length}`);
+      await writeProducts(st, "11st");
+      console.log(`Synced 11stDeals: ${st.length}`);
     } catch (e) {
       console.error("Failed 11stDeals:", e);
     }
     await sleep(1000);
     try {
       const gm = await fetchGmarketDeals();
-      await writeCache("gmarketDeals", gm);
-      console.log(`Cached gmarketDeals: ${gm.length}`);
+      await writeProducts(gm, "gmarket");
+      console.log(`Synced gmarketDeals: ${gm.length}`);
     } catch (e) {
       console.error("Failed gmarketDeals:", e);
     }
     await sleep(1000);
     try {
       const au = await fetchAuctionDeals();
-      await writeCache("auctionDeals", au);
-      console.log(`Cached auctionDeals: ${au.length}`);
+      await writeProducts(au, "auction");
+      console.log(`Synced auctionDeals: ${au.length}`);
     } catch (e) {
       console.error("Failed auctionDeals:", e);
     }
@@ -1131,19 +1367,18 @@ export const dailyBest = onSchedule(
     region: "asia-northeast3",
   },
   async () => {
-    // 캐시에서 읽기
-    const cacheDoc = await admin
+    // products/ 컬렉션에서 할인율 높은 순으로 읽기
+    const snap = await admin
       .firestore()
-      .collection("cache")
-      .doc("todayDeals")
+      .collection("products")
+      .orderBy("dropRate", "desc")
+      .limit(5)
       .get();
-    let products: ProductJson[] = cacheDoc.exists
-      ? ((cacheDoc.data()?.items as ProductJson[]) ?? [])
-      : [];
+    let products: ProductJson[] = snap.docs.map((d) => d.data() as ProductJson);
 
-    // 캐시 없으면 직접 가져오기 (fallback)
+    // products/ 비어있으면 직접 가져오기 (fallback)
     if (products.length === 0) {
-      products = await fetchTodayDeals();
+      products = (await fetchTodayDeals()).slice(0, 5);
     }
     if (products.length === 0) return;
 
@@ -1158,8 +1393,7 @@ export const dailyBest = onSchedule(
       .get();
     if (!existing.empty) return;
 
-    const top5 = products.slice(0, 5);
-    const body = top5
+    const body = products
       .map(
         (d, i) =>
           `${i + 1}. ${d.title} (${Math.round(dropRate(d))}%↓)`
@@ -1182,14 +1416,20 @@ export const dailyBest = onSchedule(
 );
 
 /** 동기화 태스크 정의 (manualSync에서 루프 처리) */
-const SYNC_TASKS: { name: string; fn: () => Promise<unknown[]>; key: string; delay?: number }[] = [
-  { name: "todayDeals",      fn: fetchTodayDeals,      key: "todayDeals" },
-  { name: "shoppingLive",    fn: fetchShoppingLive,     key: "shoppingLive" },
-  { name: "naverPromotions", fn: fetchNaverPromotions,  key: "naverPromotions" },
-  { name: "11stDeals",       fn: fetch11stDeals,        key: "11stDeals" },
-  { name: "gmarketDeals",    fn: fetchGmarketDeals,     key: "gmarketDeals" },
-  { name: "auctionDeals",    fn: fetchAuctionDeals,     key: "auctionDeals" },
-  { name: "keywordRank",     fn: fetchKeywordRank,      key: "keywordRank" },
+const SYNC_TASKS: {
+  name: string;
+  fn: () => Promise<unknown[]>;
+  key: string;
+  source?: string;
+  keepCache?: boolean;
+}[] = [
+  { name: "todayDeals",      fn: fetchTodayDeals,      key: "todayDeals",        source: "todayDeal" },
+  { name: "shoppingLive",    fn: fetchShoppingLive,     key: "shoppingLive",      source: "shoppingLive" },
+  { name: "naverPromotions", fn: fetchNaverPromotions,  key: "naverPromotions",   source: "naverPromo" },
+  { name: "11stDeals",       fn: fetch11stDeals,        key: "11stDeals",         source: "11st" },
+  { name: "gmarketDeals",    fn: fetchGmarketDeals,     key: "gmarketDeals",      source: "gmarket" },
+  { name: "auctionDeals",    fn: fetchAuctionDeals,     key: "auctionDeals",      source: "auction" },
+  { name: "keywordRank",     fn: fetchKeywordRank,      key: "keywordRank", keepCache: true },
 ];
 
 /**
@@ -1200,6 +1440,7 @@ export const manualSync = onRequest(
   {
     region: "asia-northeast3",
     timeoutSeconds: 300,
+    secrets: ["GEMINI_API_KEY"],
   },
   async (_req, res) => {
     const results: string[] = [];
@@ -1208,7 +1449,12 @@ export const manualSync = onRequest(
     for (const task of SYNC_TASKS) {
       try {
         const items = await task.fn();
-        await writeCache(task.key, items);
+        if (task.keepCache) {
+          await writeCache(task.key, items);
+        }
+        if (task.source) {
+          await writeProducts(items as ProductJson[], task.source);
+        }
         results.push(`${task.name}: ${items.length}`);
       } catch (e) {
         results.push(`${task.name}: ERROR ${e}`);
@@ -1218,8 +1464,9 @@ export const manualSync = onRequest(
     // ② BEST100 (카테고리별)
     for (const categoryId of BEST100_CATEGORIES) {
       try {
-        const products = await fetchBest100("PRODUCT_CLICK", categoryId);
-        await writeCache(`best100_${categoryId}`, products);
+        const catName = CATEGORY_NAME_MAP[categoryId];
+        const products = await fetchBest100("PRODUCT_CLICK", categoryId, catName);
+        await writeProducts(products, "best100");
         results.push(`best100_${categoryId}: ${products.length}`);
       } catch (e) {
         results.push(`best100_${categoryId}: ERROR ${e}`);

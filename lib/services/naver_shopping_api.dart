@@ -5,9 +5,7 @@ import '../constants/app_constants.dart';
 import '../models/product.dart';
 import '../models/trend_data.dart';
 import 'cache/memory_cache.dart';
-import 'cache/firestore_cache.dart';
 import 'product_filter.dart';
-import 'api/deal_fetcher.dart';
 
 export '../models/trend_data.dart';
 
@@ -34,12 +32,9 @@ class NaverShoppingApi {
 
   final http.Client _client;
   final MemoryCache _cache = MemoryCache();
-  late final DealFetcher _dealFetcher;
 
   NaverShoppingApi({http.Client? client})
-      : _client = client ?? http.Client() {
-    _dealFetcher = DealFetcher(client: _client, cache: _cache);
-  }
+      : _client = client ?? http.Client();
 
   Map<String, String> get _headers => {
         'X-Naver-Client-Id': _clientId,
@@ -274,25 +269,71 @@ class NaverShoppingApi {
     return allKeywords;
   }
 
-  // ── 딜/BEST100 위임 ──
+  // ── 키워드 랭킹 ──
 
-  Future<List<Product>> fetchTodayDeals() => _dealFetcher.fetchTodayDeals();
-  Future<List<Product>> fetchBest100({
-    String sortType = 'PRODUCT_CLICK',
-    String categoryId = 'A',
-  }) =>
-      _dealFetcher.fetchBest100(sortType: sortType, categoryId: categoryId);
-  Future<List<Product>> fetchShoppingLive() =>
-      _dealFetcher.fetchShoppingLive();
-  Future<List<Product>> fetchNaverPromotions() =>
-      _dealFetcher.fetchNaverPromotions();
-  Future<List<Product>> fetch11stDeals() => _dealFetcher.fetch11stDeals();
-  Future<List<Product>> fetchGmarketDeals() =>
-      _dealFetcher.fetchGmarketDeals();
-  Future<List<Product>> fetchAuctionDeals() =>
-      _dealFetcher.fetchAuctionDeals();
-  Future<List<TrendKeyword>> fetchKeywordRank() =>
-      _dealFetcher.fetchKeywordRank();
+  Future<List<TrendKeyword>> fetchKeywordRank() async {
+    const cacheKey = CacheKeys.keywordRank;
+    final cached = _cache.get<List<TrendKeyword>>(cacheKey);
+    if (cached != null) return cached;
+
+    final firestore = await firestoreList(
+      CacheKeys.keywordRank,
+      TrendKeyword.fromJson,
+    );
+    if (firestore != null) {
+      _cache.put(cacheKey, firestore);
+      return firestore;
+    }
+
+    if (kIsWeb) return [];
+
+    final response = await _client.get(
+      Uri.parse(
+          'https://snxbest.naver.com/api/v1/snxbest/keyword/rank'
+          '?ageType=ALL&categoryId=A&sortType=KEYWORD_NEW&periodType=WEEKLY'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://snxbest.naver.com/home',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw NaverApiException(
+          'Keyword rank API failed: ${response.statusCode}',
+          response.statusCode);
+    }
+
+    final List<dynamic> rawList = jsonDecode(response.body);
+    final keywords = <TrendKeyword>[];
+
+    for (final item in rawList) {
+      if (item is Map<String, dynamic>) {
+        final title = item['title']?.toString() ?? '';
+        if (title.isEmpty) continue;
+        final rank = (item['rank'] as num?)?.toInt() ?? 0;
+        final fluctuation = (item['rankFluctuation'] as num?)?.toInt() ?? 0;
+        final status = item['status']?.toString() ?? 'STABLE';
+
+        int? rankChange;
+        if (status == 'NEW') {
+          rankChange = null;
+        } else {
+          rankChange = fluctuation;
+        }
+
+        keywords.add(TrendKeyword(
+          keyword: title,
+          ratio: (20 - rank + 1).toDouble(),
+          rankChange: rankChange,
+        ));
+      }
+    }
+
+    _cache.put(cacheKey, keywords);
+    return keywords;
+  }
 
   void dispose() {
     _client.close();
