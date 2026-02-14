@@ -22,7 +22,9 @@ class HomeFeed extends ConsumerStatefulWidget {
 
 class _HomeFeedState extends ConsumerState<HomeFeed> {
   bool _trendExpanded = false;
+  int _trendPage = 0;
   final ScrollController _scrollController = ScrollController();
+  final PageController _trendPageController = PageController();
 
   @override
   void initState() {
@@ -34,6 +36,7 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _trendPageController.dispose();
     super.dispose();
   }
 
@@ -176,20 +179,67 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
     );
   }
 
+  Widget _buildTrendPage(TteolgaTheme t, List<TrendKeyword> keywords, int offset) {
+    final items = keywords.skip(offset).take(10).toList();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: items.asMap().entries.map((e) {
+        final rank = offset + e.key + 1;
+        final kw = e.value;
+        return GestureDetector(
+          onTap: () => _navigateToSearch(kw.keyword),
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    '$rank',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: rank <= 3 ? t.textPrimary : t.textTertiary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    kw.keyword,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: t.textPrimary, fontSize: 14),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _buildRankChange(t, kw.rankChange),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildTrendBar(TteolgaTheme t, List<TrendKeyword> keywords) {
     if (_trendExpanded) {
-      final items = keywords.take(10).toList();
+      final pageCount = keywords.length > 10 ? 2 : 1;
+      const pageHeight = 368.0;
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           decoration: BoxDecoration(
             color: t.card,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: t.border, width: 0.5),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -201,57 +251,46 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                           fontWeight: FontWeight.w600)),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => setState(() => _trendExpanded = false),
+                    onTap: () => setState(() {
+                      _trendExpanded = false;
+                      _trendPage = 0;
+                    }),
                     child: Icon(Icons.keyboard_arrow_up,
                         color: t.textTertiary, size: 20),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ...items.asMap().entries.map((e) {
-                final rank = e.key + 1;
-                final kw = e.value;
-
-                return GestureDetector(
-                  onTap: () => _navigateToSearch(kw.keyword),
-                  child: Container(
-                    color: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          child: Text(
-                            '$rank',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: rank <= 3
-                                  ? t.textPrimary
-                                  : t.textTertiary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: pageHeight,
+                child: PageView.builder(
+                  controller: _trendPageController,
+                  itemCount: pageCount,
+                  onPageChanged: (i) => setState(() => _trendPage = i),
+                  itemBuilder: (_, i) =>
+                      _buildTrendPage(t, keywords, i * 10),
+                ),
+              ),
+              if (pageCount > 1)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(pageCount, (i) {
+                      return Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i == _trendPage
+                              ? t.textPrimary
+                              : t.textTertiary.withValues(alpha: 0.3),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            kw.keyword,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: t.textPrimary,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildRankChange(t, kw.rankChange),
-                      ],
-                    ),
+                      );
+                    }),
                   ),
-                );
-              }),
+                ),
             ],
           ),
         ),

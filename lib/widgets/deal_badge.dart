@@ -9,8 +9,7 @@ class DealBadgeWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = ref.watch(tteolgaThemeProvider);
-    final colors = _badgeColors(t);
+    final colors = _badgeColors();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -29,22 +28,19 @@ class DealBadgeWidget extends ConsumerWidget {
     );
   }
 
-  (Color bg, Color text) _badgeColors(TteolgaTheme t) {
+  (Color bg, Color text) _badgeColors() {
     switch (badge) {
       case DealBadge.todayDeal:
-        return (const Color(0xFFFF3B30), Colors.white);
       case DealBadge.best100:
-        return (const Color(0xFF007AFF), Colors.white);
       case DealBadge.shoppingLive:
-        return (const Color(0xFF00C853), Colors.white);
       case DealBadge.naverPromo:
-        return (const Color(0xFF8E24AA), Colors.white);
+        return (const Color(0xFF5A8C5A), Colors.white);
       case DealBadge.st11:
-        return (const Color(0xFFFF0038), Colors.white);
+        return (const Color(0xFF9E5B5F), Colors.white);
       case DealBadge.gmarket:
-        return (const Color(0xFF00A650), Colors.white);
+        return (const Color(0xFF5B7A9E), Colors.white);
       case DealBadge.auction:
-        return (const Color(0xFFE53238), Colors.white);
+        return (const Color(0xFF8C7355), Colors.white);
     }
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../utils/url_launcher_helper.dart';
 
 /// 쿠팡 파트너스 배너 (홈/설정 삽입용)
 class CoupangBanner extends StatelessWidget {
@@ -70,10 +70,5 @@ class CoupangBanner extends StatelessWidget {
     );
   }
 
-  Future<void> _openCoupang() async {
-    final uri = Uri.parse(_coupangUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
+  Future<void> _openCoupang() => launchProductUrl(_coupangUrl);
 }

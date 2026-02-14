@@ -177,10 +177,10 @@ class Product {
 }
 
 enum DealBadge {
-  todayDeal('오늘의 특가', '특가'),
-  best100('BEST 100', 'BEST'),
-  shoppingLive('쇼핑라이브', 'LIVE'),
-  naverPromo('네이버 프로모션', '프로모션'),
+  todayDeal('오늘의 특가', '네이버 핫딜'),
+  best100('BEST 100', '네이버 BEST'),
+  shoppingLive('쇼핑라이브', '네이버 LIVE'),
+  naverPromo('네이버 프로모션', '네이버'),
   st11('11번가', '11번가'),
   gmarket('G마켓', 'G마켓'),
   auction('옥션', '옥션');

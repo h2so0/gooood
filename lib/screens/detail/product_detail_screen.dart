@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../models/product.dart';
+import '../../utils/url_launcher_helper.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/deal_badge.dart';
 import '../../providers/viewed_products_provider.dart';
@@ -210,13 +210,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               product: p,
               theme: t,
               bottomPadding: bottomPadding,
-              onTap: () async {
-                if (p.link.isNotEmpty) {
-                  final uri = Uri.parse(p.link);
-                  await launchUrl(uri,
-                      mode: LaunchMode.externalApplication);
-                }
-              },
+              onTap: () => launchProductUrl(p.link),
             ),
           ),
         ],

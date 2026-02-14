@@ -59,7 +59,7 @@ class SettingsScreen extends ConsumerWidget {
                   icon: Icons.history,
                   label: '내가 본 상품',
                   trailing: viewedCount > 0 ? '$viewedCount' : null,
-                  onTap: () => _showViewedProducts(context, ref),
+                  onTap: () => _showViewedProducts(context),
                 ),
               ],
             ),
@@ -171,15 +171,12 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showViewedProducts(BuildContext context, WidgetRef ref) {
-    final t = ref.read(tteolgaThemeProvider);
-    final products = ref.read(viewedProductsProvider);
+  void _showViewedProducts(BuildContext context) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) =>
-          ViewedProductsSheet(products: products, theme: t),
+      builder: (_) => const ViewedProductsSheet(),
     );
   }
 }
