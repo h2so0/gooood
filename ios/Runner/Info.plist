@@ -55,5 +55,12 @@
 	<array>
 		<string>com.goooood.app.background</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>naversearchapp</string>
+		<string>elevenstapp</string>
+		<string>gmarket</string>
+		<string>auction</string>
+	</array>
 </dict>
 </plist>
