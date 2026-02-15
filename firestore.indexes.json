@@ -48,6 +48,30 @@
         { "fieldPath": "source", "order": "ASCENDING" },
         { "fieldPath": "dropRate", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "device_profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "enablePriceDrop", "order": "ASCENDING" },
+        { "fieldPath": "lastPriceDropSentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "device_profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "enableCategoryAlert", "order": "ASCENDING" },
+        { "fieldPath": "lastCategoryAlertSentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "device_profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "enableSmartDigest", "order": "ASCENDING" },
+        { "fieldPath": "lastDigestSentAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

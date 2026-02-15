@@ -10,9 +10,7 @@ class CoupangBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
+    return GestureDetector(
         onTap: _openCoupang,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -66,7 +64,6 @@ class CoupangBanner extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 

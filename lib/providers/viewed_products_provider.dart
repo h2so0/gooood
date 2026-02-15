@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/product.dart';
+import '../services/device_profile_sync.dart';
 
 class ViewedProductEntry {
   final Product product;
@@ -82,6 +83,7 @@ class ViewedProductsNotifier extends StateNotifier<List<ViewedProductEntry>> {
       ...state.where((e) => e.product.id != product.id),
     ].take(50).toList();
     _save();
+    DeviceProfileSync().scheduleSync();
   }
 
   void remove(String productId) {

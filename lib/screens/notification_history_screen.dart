@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../models/product.dart';
 import '../theme/app_theme.dart';
 import '../services/notification_service.dart';
+import 'detail/product_detail_screen.dart';
 
 class NotificationHistoryScreen extends ConsumerStatefulWidget {
   const NotificationHistoryScreen({super.key});
@@ -28,6 +31,30 @@ class _NotificationHistoryScreenState
     setState(() {
       _records = service.getHistory();
     });
+  }
+
+  Future<void> _onTileTap(Map<String, dynamic> record) async {
+    final productId = record['productId'] as String?;
+    if (productId == null || productId.isEmpty) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('products')
+          .doc(productId)
+          .get();
+
+      if (!doc.exists || doc.data() == null) return;
+      if (!mounted) return;
+
+      final product = Product.fromJson(doc.data()!);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProductDetailScreen(product: product),
+        ),
+      );
+    } catch (e) {
+      // 상품이 만료되어 조회 불가
+    }
   }
 
   @override
@@ -100,9 +127,13 @@ class _NotificationHistoryScreenState
                     padding: EdgeInsets.fromLTRB(
                         16, 0, 16, MediaQuery.of(context).padding.bottom + 24),
                     itemCount: _records.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 0),
+                    separatorBuilder: (_, _) => const SizedBox(height: 0),
                     itemBuilder: (context, i) =>
-                        _NotificationTile(record: _records[i], theme: t),
+                        _NotificationTile(
+                          record: _records[i],
+                          theme: t,
+                          onTap: () => _onTileTap(_records[i]),
+                        ),
                   ),
           ),
         ],
@@ -114,7 +145,8 @@ class _NotificationHistoryScreenState
 class _NotificationTile extends StatelessWidget {
   final Map<String, dynamic> record;
   final TteolgaTheme theme;
-  const _NotificationTile({required this.record, required this.theme});
+  final VoidCallback? onTap;
+  const _NotificationTile({required this.record, required this.theme, this.onTap});
 
   static final _dateFmt = DateFormat('M/d (E) HH:mm', 'ko_KR');
 
@@ -126,6 +158,12 @@ class _NotificationTile extends StatelessWidget {
         return Icons.timer_outlined;
       case 'dailyBest':
         return Icons.emoji_events_outlined;
+      case 'priceDrop':
+        return Icons.trending_down_outlined;
+      case 'categoryInterest':
+        return Icons.category_outlined;
+      case 'smartDigest':
+        return Icons.auto_awesome_outlined;
       default:
         return Icons.notifications_outlined;
     }
@@ -139,6 +177,12 @@ class _NotificationTile extends StatelessWidget {
         return const Color(0xFFFF9800);
       case 'dailyBest':
         return const Color(0xFF448AFF);
+      case 'priceDrop':
+        return const Color(0xFF4CAF50);
+      case 'categoryInterest':
+        return const Color(0xFF9C27B0);
+      case 'smartDigest':
+        return const Color(0xFF00BCD4);
       default:
         return const Color(0xFF888888);
     }
@@ -153,7 +197,11 @@ class _NotificationTile extends StatelessWidget {
     final timestamp = DateTime.tryParse(record['timestamp'] as String? ?? '');
     final timeStr = timestamp != null ? _dateFmt.format(timestamp) : '';
 
-    return Container(
+    final hasProduct = (record['productId'] as String?)?.isNotEmpty == true;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -200,7 +248,10 @@ class _NotificationTile extends StatelessWidget {
               ],
             ),
           ),
+          if (hasProduct)
+            Icon(Icons.chevron_right, color: t.textTertiary, size: 18),
         ],
+      ),
       ),
     );
   }

@@ -1200,6 +1200,64 @@ async function matchCategory(title: string): Promise<string | null> {
 // FCM 발송
 // ──────────────────────────────────────────
 
+/** 방해금지 시간 체크 (KST 기준) */
+function isQuietHour(quietStart: number, quietEnd: number): boolean {
+  const now = new Date();
+  const kstHour = (now.getUTCHours() + 9) % 24;
+  if (quietStart <= quietEnd) {
+    return kstHour >= quietStart && kstHour < quietEnd;
+  }
+  // wraps midnight: e.g. 22~8
+  return kstHour >= quietStart || kstHour < quietEnd;
+}
+
+/** 토큰 기반 FCM 발송 + 만료 토큰 자동 삭제 */
+async function sendToDevice(
+  token: string,
+  tokenHash: string,
+  title: string,
+  body: string,
+  type: string,
+  productId?: string
+): Promise<boolean> {
+  try {
+    await admin.messaging().send({
+      token,
+      notification: { title, body },
+      data: {
+        type,
+        ...(productId ? { productId } : {}),
+      },
+      android: {
+        priority: "high",
+        notification: { channelId: "personalized" },
+      },
+      apns: {
+        payload: { aps: { sound: "default" } },
+      },
+    });
+    return true;
+  } catch (e: any) {
+    const code = e?.code || e?.errorInfo?.code || "";
+    if (
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token"
+    ) {
+      // Clean up stale token
+      try {
+        await admin.firestore()
+          .collection("device_profiles")
+          .doc(tokenHash)
+          .delete();
+        console.log(`[sendToDevice] deleted stale profile: ${tokenHash.substring(0, 8)}...`);
+      } catch (_) {}
+    } else {
+      console.error(`[sendToDevice] FCM error for ${tokenHash.substring(0, 8)}...:`, e);
+    }
+    return false;
+  }
+}
+
 async function sendToTopic(
   topic: string,
   title: string,
@@ -1236,6 +1294,82 @@ async function sendToTopic(
 }
 
 // ──────────────────────────────────────────
+// 개인화 알림 함수
+// ──────────────────────────────────────────
+
+/**
+ * checkPriceDrops: device_profiles 순회, watchedProductIds의 현재가와
+ * priceSnapshots 비교, 5%+ 하락 시 발송 (1시간 간격 제한)
+ */
+async function checkPriceDrops(): Promise<void> {
+  const db = admin.firestore();
+  const oneHourAgo = new Date(Date.now() - 3600000);
+
+  const profilesSnap = await db
+    .collection("device_profiles")
+    .where("enablePriceDrop", "==", true)
+    .get();
+
+  if (profilesSnap.empty) return;
+
+  let sentCount = 0;
+
+  for (const profileDoc of profilesSnap.docs) {
+    const profile = profileDoc.data();
+    const token = profile.fcmToken as string;
+    const tokenHash = profile.tokenHash as string;
+
+    // Rate limit: 1 hour between price drop alerts per device
+    const lastSent = profile.lastPriceDropSentAt?.toDate?.();
+    if (lastSent && lastSent > oneHourAgo) continue;
+
+    // Quiet hour check
+    if (isQuietHour(profile.quietStartHour ?? 22, profile.quietEndHour ?? 8)) continue;
+
+    const watchedIds = (profile.watchedProductIds || []) as string[];
+    const snapshots = (profile.priceSnapshots || {}) as Record<string, number>;
+    if (watchedIds.length === 0) continue;
+
+    // Check current prices for watched products
+    for (const productId of watchedIds.slice(0, 10)) {
+      const oldPrice = snapshots[productId];
+      if (!oldPrice || oldPrice <= 0) continue;
+
+      try {
+        const prodDoc = await db.collection("products").doc(productId).get();
+        if (!prodDoc.exists) continue;
+
+        const prodData = prodDoc.data()!;
+        const currentPrice = prodData.currentPrice as number;
+        if (!currentPrice || currentPrice <= 0) continue;
+
+        const dropPct = ((oldPrice - currentPrice) / oldPrice) * 100;
+        if (dropPct >= 5) {
+          const title = `📉 가격 ${Math.round(dropPct)}% 하락!`;
+          const body = prodData.title as string;
+          const rawDocId = prodDoc.id;
+
+          const sent = await sendToDevice(token, tokenHash, title, body, "priceDrop", rawDocId);
+          if (sent) {
+            await profileDoc.ref.update({
+              lastPriceDropSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            sentCount++;
+            break; // 1 alert per device per cycle
+          }
+        }
+      } catch (e) {
+        console.error(`[checkPriceDrops] product ${productId}:`, e);
+      }
+    }
+  }
+
+  if (sentCount > 0) {
+    console.log(`[checkPriceDrops] sent ${sentCount} price drop alerts`);
+  }
+}
+
+// ──────────────────────────────────────────
 // Cloud Functions
 // ──────────────────────────────────────────
 
@@ -1261,58 +1395,64 @@ export const syncDeals = onSchedule(
     // ① products/ 컬렉션에 저장
     await writeProducts(products, "todayDeal");
 
-    // ② 핫딜 알림
+    // ② 핫딜 알림 (시간당 최대 1건)
     const hotDeals = products.filter((p) => dropRate(p) >= 30);
     if (hotDeals.length > 0) {
       const db = admin.firestore();
       const sentRef = db.collection("sent_notifications");
-      const sentSnap = await sentRef
+
+      // 최근 1시간 이내 핫딜 알림이 있으면 스킵
+      const recentHot = await sentRef
         .where("type", "==", "hotDeal")
         .orderBy("timestamp", "desc")
-        .limit(200)
+        .limit(1)
         .get();
-      const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
+      const lastHotTime = recentHot.docs[0]?.data()?.timestamp?.toDate?.();
+      const canSendHot = !lastHotTime || (Date.now() - lastHotTime.getTime()) >= 3600000;
 
-      // 카테고리 매칭 (상위 10개, 알림 토픽용)
-      const categoryMap = new Map<string, string>();
-      for (let i = 0; i < Math.min(hotDeals.length, 10); i++) {
-        const cat = await matchCategory(hotDeals[i].title);
-        if (cat) categoryMap.set(hotDeals[i].id, cat);
-        await sleep(200);
-      }
+      if (canSendHot) {
+        const sentSnap = await sentRef
+          .where("type", "==", "hotDeal")
+          .orderBy("timestamp", "desc")
+          .limit(200)
+          .get();
+        const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
 
-      let sent = 0;
-      for (const deal of hotDeals) {
-        if (sent >= 3) break;
-        if (sentIds.has(deal.id)) continue;
+        for (const deal of hotDeals) {
+          if (sentIds.has(deal.id)) continue;
 
-        const rate = Math.round(dropRate(deal));
-        const title = `🔥 핫딜 ${rate}% 할인!`;
+          const rate = Math.round(dropRate(deal));
+          const title = `🔥 핫딜 ${rate}% 할인!`;
 
-        await sendToTopic("hotDeal", title, deal.title, "hotDeal", deal.id);
+          // Firestore doc ID 추가 (클라이언트 랜딩용)
+          const rawId = extractRawId(deal.id);
+          const docId = sanitizeDocId(rawId ?? deal.id);
 
-        const matchedCat = categoryMap.get(deal.id);
-        if (matchedCat && CATEGORY_MAP[matchedCat]) {
-          const catId = CATEGORY_MAP[matchedCat];
-          await sendToTopic(
-            `hotDeal_${catId}`,
-            title,
-            deal.title,
-            "hotDeal",
-            deal.id
-          );
+          await sendToTopic("hotDeal", title, deal.title, "hotDeal", docId);
+
+          // 카테고리 매칭 (알림 토픽용)
+          const cat = await matchCategory(deal.title);
+          if (cat && CATEGORY_MAP[cat]) {
+            await sendToTopic(
+              `hotDeal_${CATEGORY_MAP[cat]}`,
+              title,
+              deal.title,
+              "hotDeal",
+              docId
+            );
+          }
+
+          await sentRef.add({
+            productId: deal.id,
+            type: "hotDeal",
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          break; // 1건만 발송
         }
-
-        await sentRef.add({
-          productId: deal.id,
-          type: "hotDeal",
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        sent++;
       }
     }
 
-    // ③ 마감임박 알림
+    // ③ 마감임박 알림 (시간당 최대 1건)
     const now = Date.now();
     const endingSoon = products.filter((p) => {
       if (!p.saleEndDate) return false;
@@ -1324,35 +1464,48 @@ export const syncDeals = onSchedule(
     if (endingSoon.length > 0) {
       const db = admin.firestore();
       const sentRef = db.collection("sent_notifications");
-      const sentSnap = await sentRef
+
+      // 최근 1시간 이내 마감임박 알림이 있으면 스킵
+      const recentEnd = await sentRef
         .where("type", "==", "saleEnd")
         .orderBy("timestamp", "desc")
-        .limit(200)
+        .limit(1)
         .get();
-      const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
+      const lastEndTime = recentEnd.docs[0]?.data()?.timestamp?.toDate?.();
+      const canSendEnd = !lastEndTime || (Date.now() - lastEndTime.getTime()) >= 3600000;
 
-      let sent = 0;
-      for (const deal of endingSoon) {
-        if (sent >= 3) break;
-        if (sentIds.has(deal.id)) continue;
+      if (canSendEnd) {
+        const sentSnap = await sentRef
+          .where("type", "==", "saleEnd")
+          .orderBy("timestamp", "desc")
+          .limit(200)
+          .get();
+        const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
 
-        const endTime = new Date(deal.saleEndDate!).getTime();
-        const minutesLeft = Math.round((endTime - now) / 60000);
+        for (const deal of endingSoon) {
+          if (sentIds.has(deal.id)) continue;
 
-        await sendToTopic(
-          "saleEnd",
-          `⏰ ${minutesLeft}분 후 마감!`,
-          deal.title,
-          "saleEnd",
-          deal.id
-        );
+          const endTime = new Date(deal.saleEndDate!).getTime();
+          const minutesLeft = Math.round((endTime - now) / 60000);
 
-        await sentRef.add({
-          productId: deal.id,
-          type: "saleEnd",
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        sent++;
+          const rawId = extractRawId(deal.id);
+          const docId = sanitizeDocId(rawId ?? deal.id);
+
+          await sendToTopic(
+            "saleEnd",
+            `⏰ ${minutesLeft}분 후 마감!`,
+            deal.title,
+            "saleEnd",
+            docId
+          );
+
+          await sentRef.add({
+            productId: deal.id,
+            type: "saleEnd",
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          break; // 1건만 발송
+        }
       }
     }
 
@@ -1373,6 +1526,9 @@ export const syncDeals = onSchedule(
 
     // ⑤ 24시간 이상 오래된 products 삭제
     await cleanupOldProducts();
+
+    // ⑥ 가격 하락 알림 체크
+    await checkPriceDrops();
   }
 );
 
@@ -1586,6 +1742,210 @@ export const dailyBest = onSchedule(
       dateKey: today,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
+  }
+);
+
+/**
+ * sendCategoryAlerts: 2시간마다
+ * - 각 디바이스의 top 카테고리에서 미열람 핫딜 발송 (2시간 간격 제한)
+ */
+export const sendCategoryAlerts = onSchedule(
+  {
+    schedule: "every 2 hours",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const db = admin.firestore();
+    const twoHoursAgo = new Date(Date.now() - 7200000);
+
+    const profilesSnap = await db
+      .collection("device_profiles")
+      .where("enableCategoryAlert", "==", true)
+      .get();
+
+    if (profilesSnap.empty) return;
+
+    let sentCount = 0;
+
+    for (const profileDoc of profilesSnap.docs) {
+      const profile = profileDoc.data();
+      const token = profile.fcmToken as string;
+      const tokenHash = profile.tokenHash as string;
+
+      // Rate limit: 2 hours
+      const lastSent = profile.lastCategoryAlertSentAt?.toDate?.();
+      if (lastSent && lastSent > twoHoursAgo) continue;
+
+      // Quiet hour check
+      if (isQuietHour(profile.quietStartHour ?? 22, profile.quietEndHour ?? 8)) continue;
+
+      const catScores = (profile.categoryScores || {}) as Record<string, number>;
+      if (Object.keys(catScores).length === 0) continue;
+
+      // Get top category
+      const topCat = Object.entries(catScores)
+        .sort(([, a], [, b]) => b - a)[0]?.[0];
+      if (!topCat) continue;
+
+      // Find a hot deal in this category
+      try {
+        const dealSnap = await db
+          .collection("products")
+          .where("category", "==", topCat)
+          .orderBy("dropRate", "desc")
+          .limit(1)
+          .get();
+
+        if (dealSnap.empty) continue;
+
+        const deal = dealSnap.docs[0].data();
+        const rate = Math.round(deal.dropRate || 0);
+        if (rate < 10) continue;
+
+        const title = `🏷️ ${topCat} 핫딜 ${rate}% 할인!`;
+        const body = deal.title as string;
+
+        const sent = await sendToDevice(
+          token, tokenHash, title, body, "categoryInterest", dealSnap.docs[0].id
+        );
+        if (sent) {
+          await profileDoc.ref.update({
+            lastCategoryAlertSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          sentCount++;
+        }
+      } catch (e) {
+        console.error(`[sendCategoryAlerts] error for ${tokenHash.substring(0, 8)}...:`, e);
+      }
+    }
+
+    if (sentCount > 0) {
+      console.log(`[sendCategoryAlerts] sent ${sentCount} category alerts`);
+    }
+  }
+);
+
+/**
+ * sendSmartDigests: 매일 오전 9시 (dailyBest 직후)
+ * - enableSmartDigest 디바이스에게 top 3 카테고리 기반 맞춤 TOP 발송 (1일 1회)
+ */
+export const sendSmartDigests = onSchedule(
+  {
+    schedule: "5 9 * * *",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const db = admin.firestore();
+    const oneDayAgo = new Date(Date.now() - 86400000);
+
+    const profilesSnap = await db
+      .collection("device_profiles")
+      .where("enableSmartDigest", "==", true)
+      .get();
+
+    if (profilesSnap.empty) return;
+
+    let sentCount = 0;
+
+    for (const profileDoc of profilesSnap.docs) {
+      const profile = profileDoc.data();
+      const token = profile.fcmToken as string;
+      const tokenHash = profile.tokenHash as string;
+
+      // Rate limit: 1 per day
+      const lastSent = profile.lastDigestSentAt?.toDate?.();
+      if (lastSent && lastSent > oneDayAgo) continue;
+
+      // Quiet hour check
+      if (isQuietHour(profile.quietStartHour ?? 22, profile.quietEndHour ?? 8)) continue;
+
+      const catScores = (profile.categoryScores || {}) as Record<string, number>;
+      if (Object.keys(catScores).length === 0) continue;
+
+      // Top 3 categories
+      const topCats = Object.entries(catScores)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([cat]) => cat);
+
+      // Gather top deal per category
+      const deals: { title: string; rate: number }[] = [];
+      for (const cat of topCats) {
+        try {
+          const snap = await db
+            .collection("products")
+            .where("category", "==", cat)
+            .orderBy("dropRate", "desc")
+            .limit(1)
+            .get();
+          if (!snap.empty) {
+            const d = snap.docs[0].data();
+            deals.push({
+              title: d.title as string,
+              rate: Math.round(d.dropRate || 0),
+            });
+          }
+        } catch (_) {}
+      }
+
+      if (deals.length === 0) continue;
+
+      const body = deals
+        .map((d, i) => `${i + 1}. ${d.title} (${d.rate}%↓)`)
+        .join("\n");
+
+      const sent = await sendToDevice(
+        token, tokenHash, "✨ 오늘의 맞춤 추천", body, "smartDigest"
+      );
+      if (sent) {
+        await profileDoc.ref.update({
+          lastDigestSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        sentCount++;
+      }
+    }
+
+    if (sentCount > 0) {
+      console.log(`[sendSmartDigests] sent ${sentCount} smart digests`);
+    }
+  }
+);
+
+/**
+ * cleanupStaleProfiles: 주 1회 (일요일 04:00)
+ * - 30일+ 미접속 프로필 삭제
+ */
+export const cleanupStaleProfiles = onSchedule(
+  {
+    schedule: "0 4 * * 0",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+  },
+  async () => {
+    const db = admin.firestore();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+
+    const staleSnap = await db
+      .collection("device_profiles")
+      .where("lastSyncedAt", "<", cutoff)
+      .limit(200)
+      .get();
+
+    if (staleSnap.empty) {
+      console.log("[cleanupStaleProfiles] no stale profiles");
+      return;
+    }
+
+    const batch = db.batch();
+    staleSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+
+    console.log(`[cleanupStaleProfiles] deleted ${staleSnap.size} stale profiles`);
   }
 );
 

@@ -8,6 +8,7 @@ import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/coupang_banner.dart';
+import '../../widgets/skeleton.dart';
 import '../search_screen.dart';
 import 'rolling_keywords.dart';
 
@@ -54,6 +55,11 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
     final trendKeywords = ref.watch(trendKeywordsProvider);
     final products = hotState.products;
 
+    // 초기 로딩: 전체 스켈레톤 표시
+    if (products.isEmpty && hotState.isLoading) {
+      return const SkeletonHomeFeed();
+    }
+
     return RefreshIndicator(
       color: t.textPrimary,
       backgroundColor: t.card,
@@ -74,24 +80,20 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
               return _buildTrendBar(t, keywords);
             },
             loading: () => const SizedBox(height: 44),
-            error: (_, __) => const SizedBox(),
+            error: (_, _) => const SizedBox(),
           ),
 
           const SizedBox(height: 16),
 
-          const CoupangBanner(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: CoupangBanner(),
+          ),
           const SizedBox(height: 20),
 
           _sectionTitle(t, '오늘의 핫딜'),
           const SizedBox(height: 8),
-          if (products.isEmpty && hotState.isLoading)
-            SizedBox(
-              height: 200,
-              child: Center(
-                  child:
-                      CircularProgressIndicator(color: t.textTertiary)),
-            )
-          else if (products.isEmpty)
+          if (products.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text('핫딜 상품을 불러오는 중...',

@@ -17,5 +17,12 @@ service cloud.firestore {
     match /sent_notifications/{doc} {
       allow read, write: if false;
     }
+
+    // device_profiles: 클라이언트에서 자기 프로필 생성/수정 허용
+    match /device_profiles/{tokenHash} {
+      allow read: if false;
+      allow create, update: if true;
+      allow delete: if false;
+    }
   }
 }
