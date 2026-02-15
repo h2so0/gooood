@@ -627,8 +627,11 @@ export const productPage = onRequest(
   async (req, res) => {
     const pathParts = req.path.split("/").filter(Boolean);
     // /product/{encodedId} or just /{encodedId}
-    const rawId = pathParts[pathParts.length - 1] || "";
-    const productId = decodeURIComponent(rawId);
+    const rawSegment = pathParts[pathParts.length - 1] || "";
+    const originalId = decodeURIComponent(rawSegment);
+    // Firestore doc ID는 extractRawId + sanitizeDocId로 변환됨
+    const rawId = extractRawId(originalId);
+    const productId = sanitizeDocId(rawId ?? originalId);
 
     let title = "굿딜 - 최저가 쇼핑";
     let description = "최저가 쇼핑 가격 추적 앱에서 이 상품을 확인해보세요!";
