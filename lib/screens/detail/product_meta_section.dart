@@ -3,6 +3,39 @@ import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 
+class RankRow extends StatelessWidget {
+  final Product product;
+  final TteolgaTheme theme;
+  const RankRow({super.key, required this.product, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.emoji_events_outlined, size: 16, color: t.star),
+          const SizedBox(width: 8),
+          Text(
+            '네이버 BEST #${product.rank}',
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ReviewRow extends StatelessWidget {
   final Product product;
   final TteolgaTheme theme;
@@ -42,12 +75,16 @@ class ReviewRow extends StatelessWidget {
               style: TextStyle(color: t.textTertiary, fontSize: 13),
             ),
           ],
-          const Spacer(),
-          if (p.purchaseCount != null)
+          if (p.purchaseCount != null) ...[
+            if (p.reviewScore != null || p.reviewCount != null)
+              const SizedBox(width: 12),
+            Icon(Icons.people_outline, size: 16, color: t.textSecondary),
+            const SizedBox(width: 4),
             Text(
               '${formatCount(p.purchaseCount!)}명 구매',
               style: TextStyle(color: t.textSecondary, fontSize: 13),
             ),
+          ],
         ],
       ),
     );

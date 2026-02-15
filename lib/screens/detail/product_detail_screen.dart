@@ -67,12 +67,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       p.reviewCount != null ||
       p.purchaseCount != null ||
       p.isDeliveryFree ||
-      p.isArrivalGuarantee;
+      p.isArrivalGuarantee ||
+      p.rank != null;
 
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    final topPadding = MediaQuery.of(context).padding.top;
+    // 헤더 높이: topPadding + 8(top) + 38(button) + 8(bottom)
+    final headerHeight = topPadding + 54;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -80,13 +85,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         children: [
           ListView(
             physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.zero,
+            padding: EdgeInsets.only(top: headerHeight),
             children: [
               HeroImageSection(
                 product: p,
                 theme: t,
-                onBack: () => Navigator.of(context).pop(),
-                onShare: _shareProduct,
               ),
 
               const SizedBox(height: 20),
@@ -179,6 +182,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (p.rank != null) ...[
+                        RankRow(product: p, theme: t),
+                        const SizedBox(height: 16),
+                      ],
                       if (p.reviewScore != null ||
                           p.reviewCount != null ||
                           p.purchaseCount != null) ...[
@@ -200,6 +207,18 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
               SizedBox(height: 80 + bottomPadding),
             ],
+          ),
+
+          // 고정 헤더
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: DetailHeader(
+              theme: t,
+              onBack: () => Navigator.of(context).pop(),
+              onShare: _shareProduct,
+            ),
           ),
 
           Positioned(

@@ -11,6 +11,7 @@ class Product {
   final String category1;
   final String? category2;
   final String? category3;
+  final String? subCategory;
   final String productType;
   final int? reviewCount;
   final int? purchaseCount;
@@ -33,6 +34,7 @@ class Product {
     required this.category1,
     this.category2,
     this.category3,
+    this.subCategory,
     this.productType = '2',
     this.reviewCount,
     this.purchaseCount,
@@ -56,6 +58,7 @@ class Product {
     'category1': category1,
     'category2': category2,
     'category3': category3,
+    'subCategory': subCategory,
     'productType': productType,
     'reviewCount': reviewCount,
     'purchaseCount': purchaseCount,
@@ -79,6 +82,7 @@ class Product {
     category1: json['category1']?.toString() ?? '',
     category2: json['category2']?.toString(),
     category3: json['category3']?.toString(),
+    subCategory: json['subCategory']?.toString(),
     productType: json['productType']?.toString() ?? '2',
     reviewCount: (json['reviewCount'] as num?)?.toInt(),
     purchaseCount: (json['purchaseCount'] as num?)?.toInt(),
@@ -102,6 +106,7 @@ class Product {
     String? category1,
     String? category2,
     String? category3,
+    String? subCategory,
     String? productType,
     int? reviewCount,
     int? purchaseCount,
@@ -124,6 +129,7 @@ class Product {
       category1: category1 ?? this.category1,
       category2: category2 ?? this.category2,
       category3: category3 ?? this.category3,
+      subCategory: subCategory ?? this.subCategory,
       productType: productType ?? this.productType,
       reviewCount: reviewCount ?? this.reviewCount,
       purchaseCount: purchaseCount ?? this.purchaseCount,

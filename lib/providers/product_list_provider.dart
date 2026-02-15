@@ -4,6 +4,23 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 
+class CategoryFilter {
+  final String category;
+  final String? subCategory;
+
+  const CategoryFilter({required this.category, this.subCategory});
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CategoryFilter &&
+          category == other.category &&
+          subCategory == other.subCategory;
+
+  @override
+  int get hashCode => Object.hash(category, subCategory);
+}
+
 class ProductListState {
   final List<Product> products;
   final bool isLoading;
@@ -144,13 +161,13 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
 
 class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   static const _displaySize = 20;
-  final String category;
+  final CategoryFilter filter;
 
   List<Product> _pool = [];
   int _cursor = 0;
   final _rng = Random();
 
-  CategoryProductsNotifier(this.category) : super(const ProductListState()) {
+  CategoryProductsNotifier(this.filter) : super(const ProductListState()) {
     _loadPool();
   }
 
@@ -158,9 +175,15 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      final snapshot = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('products')
-          .where('category', isEqualTo: category)
+          .where('category', isEqualTo: filter.category);
+
+      if (filter.subCategory != null) {
+        query = query.where('subCategory', isEqualTo: filter.subCategory);
+      }
+
+      final snapshot = await query
           .orderBy('dropRate', descending: true)
           .limit(200)
           .get();
@@ -246,6 +269,6 @@ final hotProductsProvider =
 );
 
 final categoryProductsProvider = StateNotifierProvider.family<
-    CategoryProductsNotifier, ProductListState, String>(
-  (ref, category) => CategoryProductsNotifier(category),
+    CategoryProductsNotifier, ProductListState, CategoryFilter>(
+  (ref, filter) => CategoryProductsNotifier(filter),
 );
