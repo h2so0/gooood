@@ -10,8 +10,8 @@ import 'product_filter.dart';
 export '../models/trend_data.dart';
 
 class NaverShoppingApi {
-  static const _clientId = 'hiD1em_BVH7_sHIirwVD';
-  static const _clientSecret = 'b6yEA6sv6W';
+  static const _clientId = String.fromEnvironment('NAVER_CLIENT_ID', defaultValue: 'hiD1em_BVH7_sHIirwVD');
+  static const _clientSecret = String.fromEnvironment('NAVER_CLIENT_SECRET', defaultValue: 'b6yEA6sv6W');
   static const _shopUrl = 'https://openapi.naver.com/v1/search/shop.json';
   static const _trendUrl = 'https://openapi.naver.com/v1/datalab/search';
   static const _insightUrl =
@@ -261,7 +261,7 @@ class NaverShoppingApi {
           categoryName: entry.key,
         );
         allKeywords.addAll(keywords);
-      } catch (_) {}
+      } catch (e) { debugPrint('[NaverApi] popular keywords error: $e'); }
       await Future.delayed(const Duration(milliseconds: 300));
     }
 

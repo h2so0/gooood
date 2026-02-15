@@ -141,6 +141,14 @@ class Product {
     );
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Product && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
   double get dropRate {
     if (previousPrice == null || previousPrice == 0) return 0;
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;

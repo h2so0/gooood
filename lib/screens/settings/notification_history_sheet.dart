@@ -47,7 +47,7 @@ class _NotificationHistorySheetState
           builder: (_) => ProductDetailScreen(product: product),
         ),
       );
-    } catch (_) {}
+    } catch (e) { debugPrint('[NotificationHistory] product load error: $e'); }
   }
 
   void _deleteRecord(int listIndex) async {

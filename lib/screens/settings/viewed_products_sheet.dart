@@ -4,7 +4,7 @@ import '../../providers/viewed_products_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/product_image.dart';
-import '../product_detail_screen.dart';
+import '../detail/product_detail_screen.dart';
 
 class ViewedProductsSheet extends ConsumerWidget {
   const ViewedProductsSheet({super.key});

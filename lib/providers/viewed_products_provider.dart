@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/product.dart';
@@ -26,7 +27,8 @@ class ViewedProductEntry {
     if (end == null) return false;
     try {
       return DateTime.parse(end).isBefore(DateTime.now());
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ViewedProducts] date parse error: $e');
       return false;
     }
   }
@@ -59,7 +61,7 @@ class ViewedProductsNotifier extends StateNotifier<List<ViewedProductEntry>> {
       try {
         final json = jsonDecode(box.get(key)!) as Map<String, dynamic>;
         entries.add(ViewedProductEntry.fromJson(json));
-      } catch (_) {}
+      } catch (e) { debugPrint('[ViewedProducts] load entry error: $e'); }
     }
     entries.sort((a, b) => b.viewedAt.compareTo(a.viewedAt));
     state = entries.take(50).toList();

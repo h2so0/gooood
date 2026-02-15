@@ -33,6 +33,7 @@ class CacheEntry<T> {
 }
 
 class MemoryCache {
+  static const _maxEntries = 50;
   final Map<String, CacheEntry<dynamic>> _store = {};
 
   T? get<T>(String key) {
@@ -43,6 +44,12 @@ class MemoryCache {
 
   void put<T>(String key, T data) {
     _store[key] = CacheEntry<T>(data);
+    if (_store.length > _maxEntries) {
+      final oldest = _store.entries.reduce(
+        (a, b) => a.value.createdAt.isBefore(b.value.createdAt) ? a : b,
+      );
+      _store.remove(oldest.key);
+    }
   }
 
   void clear() => _store.clear();

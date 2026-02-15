@@ -5,16 +5,8 @@ import '../models/product.dart';
 import '../theme/app_theme.dart';
 import '../providers/product_list_provider.dart';
 import '../widgets/product_card.dart';
-
-const _subCategories = <String, List<String>>{
-  '디지털/가전': ['스마트폰/태블릿', '노트북/PC', 'TV/영상가전', '생활가전', '음향/게임'],
-  '패션/의류': ['여성의류', '남성의류', '신발/가방', '시계/주얼리', '언더웨어/잠옷'],
-  '생활/건강': ['가구/인테리어', '주방용품', '생활용품', '건강식품/비타민', '반려동물'],
-  '식품': ['신선식품', '가공식품', '음료/커피', '건강식품', '간식/베이커리'],
-  '뷰티': ['스킨케어', '메이크업', '헤어/바디', '향수', '남성뷰티'],
-  '스포츠/레저': ['운동복/신발', '헬스/요가', '아웃도어/캠핑', '골프', '자전거/킥보드'],
-  '출산/육아': ['유아동복', '기저귀/물티슈', '분유/이유식', '장난감/완구', '유모차/카시트'],
-};
+import '../constants/app_constants.dart';
+import '../widgets/skeleton.dart';
 
 /// 카테고리 피드 (무한스크롤 + pull-to-refresh)
 class CategoryFeed extends ConsumerStatefulWidget {
@@ -71,7 +63,7 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
     final t = ref.watch(tteolgaThemeProvider);
     final state = ref.watch(categoryProductsProvider(_filter));
     final items = state.products;
-    final subs = _subCategories[widget.category] ?? [];
+    final subs = subCategories[widget.category] ?? [];
 
     return RefreshIndicator(
       color: t.textPrimary,
@@ -155,9 +147,7 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
             ),
           if (items.isEmpty && state.isLoading)
             SliverFillRemaining(
-              child: Center(
-                child: CircularProgressIndicator(color: t.textTertiary),
-              ),
+              child: SkeletonProductGrid(theme: t),
             )
           else if (items.isEmpty)
             SliverFillRemaining(

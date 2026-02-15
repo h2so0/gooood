@@ -22,7 +22,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       await Hive.openBox<String>(_historyBoxName);
     }
     await _saveHistoryFromMessage(message);
-  } catch (_) {}
+  } catch (e) { debugPrint('[NotificationService] background handler error: $e'); }
 }
 
 Future<void> _saveHistoryFromMessage(RemoteMessage message) async {
@@ -344,7 +344,7 @@ class NotificationService {
         final pid = (json['product'] as Map<String, dynamic>?)?['id'] as String?;
         if (pid != null && pid.isNotEmpty) realIds.add(pid);
         if (realIds.length >= 4) break;
-      } catch (_) {}
+      } catch (e) { debugPrint('[NotificationService] test parse error: $e'); }
     }
 
     final testData = [

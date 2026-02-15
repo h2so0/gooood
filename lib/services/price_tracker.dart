@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'naver_shopping_api.dart';
 
@@ -67,8 +68,8 @@ class PriceTracker {
             'updatedAt': today,
           });
         }
-      } catch (_) {
-        // 개별 키워드 실패 무시
+      } catch (e) {
+        debugPrint('[PriceTracker] keyword "$keyword" error: $e');
       }
     }
 

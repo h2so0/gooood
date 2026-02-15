@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 import 'api_providers.dart';
@@ -16,7 +17,7 @@ final searchResultsProvider =
       hotMatches = hotState.products
           .where((p) => p.title.toLowerCase().contains(queryLower))
           .toList();
-    } catch (_) {}
+    } catch (e) { debugPrint('[SearchProvider] hot match error: $e'); }
 
     final searchResults = await api.searchClean(query: query, display: 40);
 
@@ -26,7 +27,8 @@ final searchResultsProvider =
     final filtered =
         searchResults.where((p) => !hotIds.contains(p.id)).toList();
     return [...hotMatches, ...filtered];
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[SearchProvider] search error: $e');
     return [];
   }
 });

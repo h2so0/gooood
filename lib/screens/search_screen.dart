@@ -5,7 +5,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 import '../providers/providers.dart';
-import 'product_detail_screen.dart';
+import 'detail/product_detail_screen.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   final String? initialQuery;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/trend_data.dart';
 import 'api_providers.dart';
@@ -10,7 +11,7 @@ final trendKeywordsProvider =
   try {
     final keywords = await api.fetchKeywordRank();
     if (keywords.isNotEmpty) return keywords;
-  } catch (_) {}
+  } catch (e) { debugPrint('[TrendProvider] keyword rank error: $e'); }
 
   final allKeywords = <TrendKeyword>[];
   try {
@@ -24,9 +25,9 @@ final trendKeywordsProvider =
             ratio: (10 - p.rank + 1).toDouble(),
           ));
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[TrendProvider] popular keywords error: $e'); }
     }
-  } catch (_) {}
+  } catch (e) { debugPrint('[TrendProvider] fallback error: $e'); }
 
   final seen = <String>{};
   return allKeywords.where((t) {

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
-import 'product_detail_screen.dart';
+import 'detail/product_detail_screen.dart';
 import 'search_screen.dart';
-import 'settings_screen.dart';
+import 'settings/settings_screen.dart';
 import 'home/home_feed.dart';
 import 'category_feed.dart';
 

@@ -53,7 +53,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           }
         });
       });
-    } catch (_) {}
+    } catch (e) { debugPrint('[ProductDetail] countdown init error: $e'); }
   }
 
   @override

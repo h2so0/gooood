@@ -205,11 +205,12 @@ class DeviceProfileSync {
         try {
           final json = jsonDecode(box.get(key)!) as Map<String, dynamic>;
           entries.add(ViewedProductEntry.fromJson(json));
-        } catch (_) {}
+        } catch (e) { debugPrint('[DeviceProfileSync] parse entry error: $e'); }
       }
       entries.sort((a, b) => b.viewedAt.compareTo(a.viewedAt));
       return entries;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[DeviceProfileSync] loadViewedEntriesSync error: $e');
       return [];
     }
   }
@@ -220,7 +221,8 @@ class DeviceProfileSync {
         await Hive.openBox<String>(_viewedBoxName);
       }
       return _loadViewedEntriesSync();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[DeviceProfileSync] loadViewedEntries error: $e');
       return [];
     }
   }

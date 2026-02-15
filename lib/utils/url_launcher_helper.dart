@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 앱이 설치되어 있으면 앱으로, 없으면 브라우저로 열기
@@ -6,7 +7,8 @@ Future<void> launchProductUrl(String url) async {
   final uri = Uri.parse(url);
   try {
     await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[UrlLauncher] app launch failed, trying browser: $e');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
