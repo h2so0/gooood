@@ -4,6 +4,55 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 
+// ── 공용 유틸 ──
+
+final _rng = Random();
+
+/// 판매처 ID prefix로 소스 감지
+String _sourceOf(Product p) {
+  final id = p.id;
+  if (id.startsWith('deal_')) return 'naver_deal';
+  if (id.startsWith('best_')) return 'naver_best';
+  if (id.startsWith('live_')) return 'naver_live';
+  if (id.startsWith('promo_')) return 'naver_promo';
+  if (id.startsWith('11st_')) return '11st';
+  if (id.startsWith('gmkt_')) return 'gmarket';
+  if (id.startsWith('auction_')) return 'auction';
+  return 'other';
+}
+
+/// 판매처 균등 배분 + 전체 랜덤 셔플
+List<Product> balancedShuffle(List<Product> products) {
+  // 1) 소스별 그룹핑
+  final groups = <String, List<Product>>{};
+  for (final p in products) {
+    groups.putIfAbsent(_sourceOf(p), () => []).add(p);
+  }
+
+  // 2) 각 소스 내부 셔플
+  for (final list in groups.values) {
+    list.shuffle(_rng);
+  }
+
+  // 3) 라운드로빈으로 판매처 균등 배분
+  final result = <Product>[];
+  final sources = groups.values.where((l) => l.isNotEmpty).toList();
+  sources.shuffle(_rng); // 소스 순서도 랜덤
+
+  final maxLen = sources.fold<int>(0, (m, l) => l.length > m ? l.length : m);
+  for (int i = 0; i < maxLen; i++) {
+    for (final list in sources) {
+      if (i < list.length) {
+        result.add(list[i]);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ── 타입 ──
+
 class CategoryFilter {
   final String category;
   final String? subCategory;
@@ -51,13 +100,14 @@ class ProductListState {
   }
 }
 
+// ── HotProductsNotifier ──
+
 class HotProductsNotifier extends StateNotifier<ProductListState> {
   static const _displaySize = 20;
 
   /// 전체 상품 풀 (셔플 대상)
   List<Product> _pool = [];
   int _cursor = 0;
-  final _rng = Random();
 
   HotProductsNotifier() : super(const ProductListState()) {
     _loadPool();
@@ -80,7 +130,7 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
       }).toList();
 
       // 판매처별 균등 배분 후 전체 셔플
-      _pool = _balancedShuffle(all);
+      _pool = balancedShuffle(all);
       _cursor = 0;
 
       // 첫 페이지 표시
@@ -114,58 +164,19 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
     _cursor = 0;
     await _loadPool();
   }
-
-  /// 판매처 ID prefix로 소스 감지
-  String _sourceOf(Product p) {
-    final id = p.id;
-    if (id.startsWith('deal_')) return 'naver_deal';
-    if (id.startsWith('best_')) return 'naver_best';
-    if (id.startsWith('live_')) return 'naver_live';
-    if (id.startsWith('promo_')) return 'naver_promo';
-    if (id.startsWith('11st_')) return '11st';
-    if (id.startsWith('gmkt_')) return 'gmarket';
-    if (id.startsWith('auction_')) return 'auction';
-    return 'other';
-  }
-
-  /// 판매처 균등 배분 + 전체 랜덤 셔플
-  List<Product> _balancedShuffle(List<Product> products) {
-    // 1) 소스별 그룹핑
-    final groups = <String, List<Product>>{};
-    for (final p in products) {
-      groups.putIfAbsent(_sourceOf(p), () => []).add(p);
-    }
-
-    // 2) 각 소스 내부 셔플
-    for (final list in groups.values) {
-      list.shuffle(_rng);
-    }
-
-    // 3) 라운드로빈으로 판매처 균등 배분
-    final result = <Product>[];
-    final sources = groups.values.where((l) => l.isNotEmpty).toList();
-    sources.shuffle(_rng); // 소스 순서도 랜덤
-
-    final maxLen = sources.fold<int>(0, (m, l) => l.length > m ? l.length : m);
-    for (int i = 0; i < maxLen; i++) {
-      for (final list in sources) {
-        if (i < list.length) {
-          result.add(list[i]);
-        }
-      }
-    }
-
-    return result;
-  }
 }
+
+// ── CategoryProductsNotifier ──
 
 class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   static const _displaySize = 20;
   final CategoryFilter filter;
 
+  /// 카테고리별 전체 풀 캐시 (중카테고리 전환 시 Firestore 재쿼리 방지)
+  static final _fullCategoryPool = <String, List<Product>>{};
+
   List<Product> _pool = [];
   int _cursor = 0;
-  final _rng = Random();
 
   CategoryProductsNotifier(this.filter) : super(const ProductListState()) {
     _loadPool();
@@ -175,24 +186,46 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('products')
-          .where('category', isEqualTo: filter.category);
+      List<Product> all;
 
       if (filter.subCategory != null) {
-        query = query.where('subCategory', isEqualTo: filter.subCategory);
+        // 중카테고리 선택 시: 캐시에서 필터링 (Firestore 쿼리 0회)
+        final cached = _fullCategoryPool[filter.category];
+        if (cached != null) {
+          all = cached
+              .where((p) => p.subCategory == filter.subCategory)
+              .toList();
+        } else {
+          // 캐시 미스: Firestore에서 직접 쿼리
+          final snapshot = await FirebaseFirestore.instance
+              .collection('products')
+              .where('category', isEqualTo: filter.category)
+              .where('subCategory', isEqualTo: filter.subCategory)
+              .orderBy('dropRate', descending: true)
+              .limit(200)
+              .get();
+
+          all = snapshot.docs.map((doc) {
+            return Product.fromJson(doc.data());
+          }).toList();
+        }
+      } else {
+        // "전체" 탭: Firestore 쿼리 후 캐시에 저장
+        final snapshot = await FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .orderBy('dropRate', descending: true)
+            .limit(200)
+            .get();
+
+        all = snapshot.docs.map((doc) {
+          return Product.fromJson(doc.data());
+        }).toList();
+
+        _fullCategoryPool[filter.category] = all;
       }
 
-      final snapshot = await query
-          .orderBy('dropRate', descending: true)
-          .limit(200)
-          .get();
-
-      final all = snapshot.docs.map((doc) {
-        return Product.fromJson(doc.data());
-      }).toList();
-
-      _pool = _balancedShuffle(all);
+      _pool = balancedShuffle(all);
       _cursor = 0;
       _showNextPage();
     } catch (e) {
@@ -219,56 +252,23 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> refresh() async {
+    _fullCategoryPool.remove(filter.category);
     state = const ProductListState();
     _pool.clear();
     _cursor = 0;
     await _loadPool();
   }
-
-  String _sourceOf(Product p) {
-    final id = p.id;
-    if (id.startsWith('deal_')) return 'naver_deal';
-    if (id.startsWith('best_')) return 'naver_best';
-    if (id.startsWith('live_')) return 'naver_live';
-    if (id.startsWith('promo_')) return 'naver_promo';
-    if (id.startsWith('11st_')) return '11st';
-    if (id.startsWith('gmkt_')) return 'gmarket';
-    if (id.startsWith('auction_')) return 'auction';
-    return 'other';
-  }
-
-  List<Product> _balancedShuffle(List<Product> products) {
-    final groups = <String, List<Product>>{};
-    for (final p in products) {
-      groups.putIfAbsent(_sourceOf(p), () => []).add(p);
-    }
-
-    for (final list in groups.values) {
-      list.shuffle(_rng);
-    }
-
-    final result = <Product>[];
-    final sources = groups.values.where((l) => l.isNotEmpty).toList();
-    sources.shuffle(_rng);
-
-    final maxLen = sources.fold<int>(0, (m, l) => l.length > m ? l.length : m);
-    for (int i = 0; i < maxLen; i++) {
-      for (final list in sources) {
-        if (i < list.length) {
-          result.add(list[i]);
-        }
-      }
-    }
-    return result;
-  }
 }
+
+// ── Providers ──
 
 final hotProductsProvider =
     StateNotifierProvider<HotProductsNotifier, ProductListState>(
   (ref) => HotProductsNotifier(),
 );
 
-final categoryProductsProvider = StateNotifierProvider.family<
-    CategoryProductsNotifier, ProductListState, CategoryFilter>(
+final categoryProductsProvider =
+    StateNotifierProvider.autoDispose.family<CategoryProductsNotifier,
+        ProductListState, CategoryFilter>(
   (ref, filter) => CategoryProductsNotifier(filter),
 );

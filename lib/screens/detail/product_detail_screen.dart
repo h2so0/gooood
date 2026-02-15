@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/product.dart';
 import '../../utils/url_launcher_helper.dart';
@@ -239,15 +239,6 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   void _shareProduct() {
     final text = '${p.title}\n${formatPrice(p.currentPrice)}\n${p.link}';
-    Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('링크가 복사되었습니다'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    SharePlus.instance.share(ShareParams(text: text));
   }
 }

@@ -1,9 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Theme mode provider
-final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.dark);
+/// Theme mode provider (SharedPreferences 영구 저장)
+final themeModeProvider =
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
+        (ref) => ThemeModeNotifier());
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier() : super(ThemeMode.dark) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool('isDarkMode') ?? true;
+    state = isDark ? ThemeMode.dark : ThemeMode.light;
+  }
+
+  void toggle() async {
+    final isDark = state == ThemeMode.dark;
+    state = isDark ? ThemeMode.light : ThemeMode.dark;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', !isDark);
+  }
+}
 
 /// Minimal color palette: background + text + 1 accent for price drop
 class AppColors {

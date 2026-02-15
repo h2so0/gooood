@@ -87,8 +87,7 @@ class ThemeToggleRow extends ConsumerWidget {
                 inactiveThumbColor: t.textTertiary,
                 inactiveTrackColor: t.border,
                 onChanged: (_) {
-                  ref.read(themeModeProvider.notifier).state =
-                      isDark ? ThemeMode.light : ThemeMode.dark;
+                  ref.read(themeModeProvider.notifier).toggle();
                 },
               )),
         ],
