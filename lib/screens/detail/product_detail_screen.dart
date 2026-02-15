@@ -238,7 +238,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   void _shareProduct() {
-    final text = '${p.title}\n${formatPrice(p.currentPrice)}\n${p.link}';
+    final deepLink = 'https://gooddeal-app.web.app/product/${p.id}';
+    final text = '${p.title}\n${formatPrice(p.currentPrice)}\n$deepLink';
     SharePlus.instance.share(ShareParams(text: text));
   }
 }

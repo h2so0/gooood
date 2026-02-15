@@ -7,6 +7,24 @@
       "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
     }
   ],
+  "hosting": {
+    "public": "hosting",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/.well-known/apple-app-site-association",
+        "headers": [
+          { "key": "Content-Type", "value": "application/json" }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/product/**",
+        "destination": "/product/index.html"
+      }
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

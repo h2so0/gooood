@@ -1,3 +1,4 @@
+import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -90,6 +91,34 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
 
     // 포그라운드 로컬 알림 탭 콜백 등록
     NotificationService().setOnNotificationTap(_handleNotificationTap);
+
+    // 딥링크 처리
+    _setupDeepLinks();
+  }
+
+  void _setupDeepLinks() {
+    final appLinks = AppLinks();
+
+    // 앱이 종료 상태에서 딥링크로 열렸을 때
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleDeepLink(uri);
+    });
+
+    // 앱이 실행 중일 때 딥링크 수신
+    appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    // https://gooddeal-app.web.app/product/{productId}
+    final segments = uri.pathSegments;
+    if (segments.length >= 2 && segments[0] == 'product') {
+      final productId = segments[1];
+      if (productId.isNotEmpty) {
+        _navigateToProduct(productId);
+      }
+    }
   }
 
   void _handleNotificationTap(Map<String, dynamic> data) {
