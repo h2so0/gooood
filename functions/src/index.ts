@@ -619,6 +619,95 @@ export const manualSync = onRequest(
   }
 );
 
+export const productPage = onRequest(
+  {
+    region: "asia-northeast3",
+    cors: true,
+  },
+  async (req, res) => {
+    const pathParts = req.path.split("/").filter(Boolean);
+    // /product/{encodedId} or just /{encodedId}
+    const rawId = pathParts[pathParts.length - 1] || "";
+    const productId = decodeURIComponent(rawId);
+
+    let title = "굿딜 - 최저가 쇼핑";
+    let description = "최저가 쇼핑 가격 추적 앱에서 이 상품을 확인해보세요!";
+    let imageUrl = "https://gooddeal-app.web.app/og-default.png";
+    let price = "";
+
+    if (productId) {
+      try {
+        const doc = await admin.firestore().collection("products").doc(productId).get();
+        if (doc.exists) {
+          const data = doc.data()!;
+          title = (data.title as string) || title;
+          if (data.imageUrl) imageUrl = data.imageUrl as string;
+          if (data.currentPrice) {
+            price = `${Number(data.currentPrice).toLocaleString()}원`;
+            description = `${price} - 굿딜에서 최저가 확인`;
+          }
+          if (data.dropRate && Number(data.dropRate) > 0) {
+            description = `${Math.round(Number(data.dropRate))}% 할인 ${price} - 굿딜에서 최저가 확인`;
+          }
+        }
+      } catch (e) {
+        console.error("[productPage] Firestore error:", e);
+      }
+    }
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>${esc(title)} - 굿딜</title>
+  <meta property="og:title" content="${esc(title)}" />
+  <meta property="og:description" content="${esc(description)}" />
+  <meta property="og:image" content="${esc(imageUrl)}" />
+  <meta property="og:type" content="product" />
+  <meta property="og:site_name" content="굿딜" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${esc(title)}" />
+  <meta name="twitter:description" content="${esc(description)}" />
+  <meta name="twitter:image" content="${esc(imageUrl)}" />
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;display:flex;justify-content:center;align-items:center;min-height:100vh}
+    .card{background:#fff;border-radius:16px;padding:40px 32px;max-width:360px;width:90%;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.08)}
+    .icon{font-size:48px;margin-bottom:16px}
+    h1{font-size:20px;color:#222;margin-bottom:6px;line-height:1.4}
+    .price{font-size:18px;color:#FF3B30;font-weight:700;margin-bottom:16px}
+    p{font-size:14px;color:#888;margin-bottom:24px;line-height:1.5}
+    .btn{display:inline-block;padding:14px 32px;border-radius:12px;background:#FF3B30;color:#fff;text-decoration:none;font-size:16px;font-weight:600}
+    .btn:hover{background:#E0342A}
+    .sub{font-size:12px;color:#aaa;margin-top:16px}
+  </style>
+  <script>
+    var ua=navigator.userAgent.toLowerCase();
+    var isIOS=/iphone|ipad|ipod/.test(ua);
+    var storeUrl=isIOS?'https://apps.apple.com/app/id6746498814':'https://play.google.com/store/apps/details?id=com.goooood.app';
+    window.onload=function(){var b=document.getElementById('store-btn');if(b)b.href=storeUrl};
+  </script>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🛍️</div>
+    <h1>${esc(title)}</h1>
+    ${price ? `<div class="price">${esc(price)}</div>` : ""}
+    <p>굿딜 앱에서 확인해보세요!</p>
+    <a id="store-btn" class="btn" href="https://apps.apple.com/app/id6746498814">앱에서 보기</a>
+    <p class="sub">앱이 설치되어 있다면 자동으로 열립니다</p>
+  </div>
+</body>
+</html>`;
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.status(200).send(html);
+  }
+);
+
 export const imageProxy = onRequest(
   {
     region: "asia-northeast3",

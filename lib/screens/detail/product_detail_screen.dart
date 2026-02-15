@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/product.dart';
@@ -239,122 +238,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   void _shareProduct() {
-    final t = ref.read(tteolgaThemeProvider);
-    final deepLink = 'https://gooddeal-app.web.app/product/${p.id}';
-    final shareText = '${p.title}\n${formatPrice(p.currentPrice)}\n$deepLink';
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: t.bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: t.textTertiary.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('공유하기',
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                )),
-            ),
-            const SizedBox(height: 20),
-            _ShareOption(
-              icon: Icons.copy_rounded,
-              label: '링크 복사',
-              theme: t,
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: deepLink));
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('링크가 복사되었습니다'),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            ),
-            _ShareOption(
-              icon: Icons.share_rounded,
-              label: '다른 앱으로 공유',
-              theme: t,
-              onTap: () {
-                Navigator.pop(context);
-                SharePlus.instance.share(ShareParams(text: shareText));
-              },
-            ),
-            _ShareOption(
-              icon: Icons.open_in_browser_rounded,
-              label: '브라우저에서 열기',
-              theme: t,
-              onTap: () {
-                Navigator.pop(context);
-                launchProductUrl(p.link);
-              },
-            ),
-            SizedBox(height: 16 + bottomPadding),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ShareOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final TteolgaTheme theme;
-  final VoidCallback onTap;
-
-  const _ShareOption({
-    required this.icon,
-    required this.label,
-    required this.theme,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: theme.surface,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: theme.textSecondary, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Text(label,
-              style: TextStyle(
-                color: theme.textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              )),
-          ],
-        ),
-      ),
-    );
+    final encodedId = Uri.encodeComponent(p.id);
+    final deepLink = 'https://gooddeal-app.web.app/product/$encodedId';
+    SharePlus.instance.share(ShareParams(text: deepLink));
   }
 }

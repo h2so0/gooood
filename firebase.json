@@ -21,7 +21,7 @@
     "rewrites": [
       {
         "source": "/product/**",
-        "destination": "/product/index.html"
+        "function": "productPage"
       }
     ]
   },
