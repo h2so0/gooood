@@ -1,55 +1,7 @@
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
-
-// ── 공용 유틸 ──
-
-final _rng = Random();
-
-/// 판매처 ID prefix로 소스 감지
-String _sourceOf(Product p) {
-  final id = p.id;
-  if (id.startsWith('deal_')) return 'naver_deal';
-  if (id.startsWith('best_')) return 'naver_best';
-  if (id.startsWith('live_')) return 'naver_live';
-  if (id.startsWith('promo_')) return 'naver_promo';
-  if (id.startsWith('11st_')) return '11st';
-  if (id.startsWith('gmkt_')) return 'gmarket';
-  if (id.startsWith('auction_')) return 'auction';
-  return 'other';
-}
-
-/// 판매처 균등 배분 + 전체 랜덤 셔플
-List<Product> balancedShuffle(List<Product> products) {
-  // 1) 소스별 그룹핑
-  final groups = <String, List<Product>>{};
-  for (final p in products) {
-    groups.putIfAbsent(_sourceOf(p), () => []).add(p);
-  }
-
-  // 2) 각 소스 내부 셔플
-  for (final list in groups.values) {
-    list.shuffle(_rng);
-  }
-
-  // 3) 라운드로빈으로 판매처 균등 배분
-  final result = <Product>[];
-  final sources = groups.values.where((l) => l.isNotEmpty).toList();
-  sources.shuffle(_rng); // 소스 순서도 랜덤
-
-  final maxLen = sources.fold<int>(0, (m, l) => l.length > m ? l.length : m);
-  for (int i = 0; i < maxLen; i++) {
-    for (final list in sources) {
-      if (i < list.length) {
-        result.add(list[i]);
-      }
-    }
-  }
-
-  return result;
-}
 
 // ── 타입 ──
 
@@ -100,163 +52,189 @@ class ProductListState {
   }
 }
 
-// ── HotProductsNotifier ──
+// ── HotProductsNotifier (서버 페이지네이션) ──
 
 class HotProductsNotifier extends StateNotifier<ProductListState> {
-  static const _displaySize = 20;
+  static const _pageSize = 20;
 
-  /// 전체 상품 풀 (셔플 대상)
-  List<Product> _pool = [];
-  int _cursor = 0;
+  /// feedOrder 사용 가능 여부 (첫 페이지에서 1회 판별)
+  bool? _useFeedOrder;
 
   HotProductsNotifier() : super(const ProductListState()) {
-    _loadPool();
+    _fetchPage();
   }
 
-  Future<void> _loadPool() async {
+  Future<void> _fetchPage() async {
     state = state.copyWith(isLoading: true);
 
     try {
-      // 전체 상품 한 번에 가져오기 (dropRate > 0만)
-      final snapshot = await FirebaseFirestore.instance
-          .collection('products')
-          .where('dropRate', isGreaterThan: 0)
-          .orderBy('dropRate', descending: true)
-          .limit(300)
-          .get();
+      // 첫 페이지에서만 feedOrder 존재 여부 확인
+      if (_useFeedOrder == null) {
+        final testSnap = await FirebaseFirestore.instance
+            .collection('products')
+            .where('feedOrder', isGreaterThanOrEqualTo: 0)
+            .limit(1)
+            .get();
+        _useFeedOrder = testSnap.docs.isNotEmpty;
+      }
 
-      final all = snapshot.docs.map((doc) {
-        return Product.fromJson(doc.data());
+      Query query;
+
+      if (_useFeedOrder!) {
+        query = FirebaseFirestore.instance
+            .collection('products')
+            .where('feedOrder', isGreaterThanOrEqualTo: 0)
+            .orderBy('feedOrder')
+            .limit(_pageSize);
+      } else {
+        query = FirebaseFirestore.instance
+            .collection('products')
+            .where('dropRate', isGreaterThan: 0)
+            .orderBy('dropRate', descending: true)
+            .limit(_pageSize);
+      }
+
+      if (state.lastDocument != null) {
+        query = query.startAfterDocument(state.lastDocument!);
+      }
+
+      final snapshot = await query.get();
+      final page = snapshot.docs.map((doc) {
+        return Product.fromJson(doc.data() as Map<String, dynamic>);
       }).toList();
 
-      // 판매처별 균등 배분 후 전체 셔플
-      _pool = balancedShuffle(all);
-      _cursor = 0;
-
-      // 첫 페이지 표시
-      _showNextPage();
+      state = ProductListState(
+        products: [...state.products, ...page],
+        isLoading: false,
+        hasMore: page.length >= _pageSize,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
     } catch (e) {
-      debugPrint('[HotProducts] loadPool error: $e');
+      debugPrint('[HotProducts] fetchPage error: $e');
       state = state.copyWith(isLoading: false);
     }
   }
 
-  void _showNextPage() {
-    final end = (_cursor + _displaySize).clamp(0, _pool.length);
-    final page = _pool.sublist(_cursor, end);
-    _cursor = end;
-
-    state = ProductListState(
-      products: [...state.products, ...page],
-      isLoading: false,
-      hasMore: _cursor < _pool.length,
-    );
-  }
-
   Future<void> fetchNextPage() async {
     if (state.isLoading || !state.hasMore) return;
-    _showNextPage();
+    await _fetchPage();
   }
 
   Future<void> refresh() async {
+    _useFeedOrder = null;
     state = const ProductListState();
-    _pool.clear();
-    _cursor = 0;
-    await _loadPool();
+    await _fetchPage();
   }
 }
 
-// ── CategoryProductsNotifier ──
+// ── CategoryProductsNotifier (서버 페이지네이션) ──
 
 class CategoryProductsNotifier extends StateNotifier<ProductListState> {
-  static const _displaySize = 20;
+  static const _pageSize = 20;
   final CategoryFilter filter;
 
-  /// 카테고리별 전체 풀 캐시 (중카테고리 전환 시 Firestore 재쿼리 방지)
-  static final _fullCategoryPool = <String, List<Product>>{};
-
-  List<Product> _pool = [];
-  int _cursor = 0;
-
   CategoryProductsNotifier(this.filter) : super(const ProductListState()) {
-    _loadPool();
+    _fetchPage();
   }
 
-  Future<void> _loadPool() async {
+  Future<void> _fetchPage() async {
     state = state.copyWith(isLoading: true);
 
     try {
-      List<Product> all;
+      Query query;
 
       if (filter.subCategory != null) {
-        // 중카테고리 선택 시: 캐시에서 필터링 (Firestore 쿼리 0회)
-        final cached = _fullCategoryPool[filter.category];
-        if (cached != null) {
-          all = cached
-              .where((p) => p.subCategory == filter.subCategory)
-              .toList();
-        } else {
-          // 캐시 미스: Firestore에서 직접 쿼리
-          final snapshot = await FirebaseFirestore.instance
-              .collection('products')
-              .where('category', isEqualTo: filter.category)
-              .where('subCategory', isEqualTo: filter.subCategory)
-              .orderBy('dropRate', descending: true)
-              .limit(200)
-              .get();
-
-          all = snapshot.docs.map((doc) {
-            return Product.fromJson(doc.data());
-          }).toList();
-        }
-      } else {
-        // "전체" 탭: Firestore 쿼리 후 캐시에 저장
-        final snapshot = await FirebaseFirestore.instance
+        query = FirebaseFirestore.instance
             .collection('products')
             .where('category', isEqualTo: filter.category)
-            .orderBy('dropRate', descending: true)
-            .limit(200)
-            .get();
-
-        all = snapshot.docs.map((doc) {
-          return Product.fromJson(doc.data());
-        }).toList();
-
-        _fullCategoryPool[filter.category] = all;
+            .where('subCategory', isEqualTo: filter.subCategory)
+            .orderBy('categoryFeedOrder')
+            .limit(_pageSize);
+      } else {
+        query = FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .orderBy('categoryFeedOrder')
+            .limit(_pageSize);
       }
 
-      _pool = balancedShuffle(all);
-      _cursor = 0;
-      _showNextPage();
+      if (state.lastDocument != null) {
+        query = query.startAfterDocument(state.lastDocument!);
+      }
+
+      final snapshot = await query.get();
+      final page = snapshot.docs.map((doc) {
+        return Product.fromJson(doc.data() as Map<String, dynamic>);
+      }).toList();
+
+      state = ProductListState(
+        products: [...state.products, ...page],
+        isLoading: false,
+        hasMore: page.length >= _pageSize,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
     } catch (e) {
-      debugPrint('[CategoryProducts] loadPool error: $e');
+      debugPrint('[CategoryProducts] fetchPage error: $e');
+
+      // categoryFeedOrder 인덱스 미생성 시 dropRate 폴백
+      if (e.toString().contains('failed-precondition') ||
+          e.toString().contains('requires an index')) {
+        await _fetchPageFallback();
+        return;
+      }
+
       state = state.copyWith(isLoading: false);
     }
   }
 
-  void _showNextPage() {
-    final end = (_cursor + _displaySize).clamp(0, _pool.length);
-    final page = _pool.sublist(_cursor, end);
-    _cursor = end;
+  Future<void> _fetchPageFallback() async {
+    try {
+      Query query;
 
-    state = ProductListState(
-      products: [...state.products, ...page],
-      isLoading: false,
-      hasMore: _cursor < _pool.length,
-    );
+      if (filter.subCategory != null) {
+        query = FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .where('subCategory', isEqualTo: filter.subCategory)
+            .orderBy('dropRate', descending: true)
+            .limit(_pageSize);
+      } else {
+        query = FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .orderBy('dropRate', descending: true)
+            .limit(_pageSize);
+      }
+
+      if (state.lastDocument != null) {
+        query = query.startAfterDocument(state.lastDocument!);
+      }
+
+      final snapshot = await query.get();
+      final page = snapshot.docs.map((doc) {
+        return Product.fromJson(doc.data() as Map<String, dynamic>);
+      }).toList();
+
+      state = ProductListState(
+        products: [...state.products, ...page],
+        isLoading: false,
+        hasMore: page.length >= _pageSize,
+        lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+      );
+    } catch (e) {
+      debugPrint('[CategoryProducts] fallback error: $e');
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> fetchNextPage() async {
     if (state.isLoading || !state.hasMore) return;
-    _showNextPage();
+    await _fetchPage();
   }
 
   Future<void> refresh() async {
-    _fullCategoryPool.remove(filter.category);
     state = const ProductListState();
-    _pool.clear();
-    _cursor = 0;
-    await _loadPool();
+    await _fetchPage();
   }
 }
 

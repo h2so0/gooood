@@ -50,6 +50,23 @@
       ]
     },
     {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "categoryFeedOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "subCategory", "order": "ASCENDING" },
+        { "fieldPath": "categoryFeedOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "device_profiles",
       "queryScope": "COLLECTION",
       "fields": [

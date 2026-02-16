@@ -42,6 +42,7 @@ import {
   fetchGmarketDeals,
   fetchAuctionDeals,
 } from "./fetchers/external";
+import { refreshFeedData } from "./feed";
 
 admin.initializeApp();
 
@@ -345,6 +346,18 @@ export const syncExternalDeals = onSchedule(
   }
 );
 
+export const refreshFeed = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    await refreshFeedData();
+  }
+);
+
 export const dailyBest = onSchedule(
   {
     schedule: "0 9 * * *",
@@ -613,6 +626,13 @@ export const manualSync = onRequest(
       results.push(`backfill: ${backfilled}`);
     } catch (e) {
       results.push(`backfill: ERROR ${e}`);
+    }
+
+    try {
+      await refreshFeedData();
+      results.push("refreshFeed: OK");
+    } catch (e) {
+      results.push(`refreshFeed: ERROR ${e}`);
     }
 
     res.json({ ok: true, results });
