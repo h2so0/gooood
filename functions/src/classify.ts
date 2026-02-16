@@ -20,6 +20,9 @@ export function mapToAppCategory(
 ): CategoryResult | null {
   let category: string | null = null;
 
+  // cat2, cat3도 합쳐서 폭넓게 매칭
+  const cats = [cat1, cat2 ?? "", cat3 ?? ""].join(" ");
+
   if (
     cat1.includes("디지털") || cat1.includes("가전") ||
     cat1.includes("컴퓨터") || cat1.includes("휴대폰") || cat1.includes("게임")
@@ -40,16 +43,74 @@ export function mapToAppCategory(
   ) {
     category = "출산/육아";
   } else if (
+    cat1.includes("자동차") || cat1.includes("차량") ||
     cat1.includes("생활") || cat1.includes("건강") || cat1.includes("가구") ||
-    cat1.includes("인테리어") || cat1.includes("주방") || cat1.includes("문구")
+    cat1.includes("인테리어") || cat1.includes("주방") || cat1.includes("문구") ||
+    cat1.includes("도서") || cat1.includes("반려") || cat1.includes("애완")
   ) {
     category = "생활/건강";
   }
 
+  // cat2/cat3에서 세부 힌트 매칭 (cat1에서 못 잡은 경우)
+  if (!category) {
+    if (cats.includes("자동차") || cats.includes("차량")) {
+      category = "생활/건강";
+    } else if (cats.includes("반려") || cats.includes("애완") || cats.includes("펫")) {
+      category = "생활/건강";
+    }
+  }
+
   if (!category) return null;
 
-  const subCategory = SUB_CATEGORIES[category]?.[0] ?? "";
+  // cat2/cat3 힌트로 서브카테고리 정밀 매칭
+  const validSubs = SUB_CATEGORIES[category] || [];
+  let subCategory = validSubs[0] || "";
+
+  if (category === "생활/건강") {
+    if (cats.includes("자동차") || cats.includes("차량")) {
+      subCategory = "생활용품";
+    } else if (cats.includes("반려") || cats.includes("애완") || cats.includes("펫")) {
+      subCategory = "반려동물";
+    } else if (cats.includes("가구") || cats.includes("인테리어") || cats.includes("조명")) {
+      subCategory = "가구/인테리어";
+    } else if (cats.includes("주방")) {
+      subCategory = "주방용품";
+    } else if (cats.includes("건강") || cats.includes("비타민") || cats.includes("영양")) {
+      subCategory = "건강식품/비타민";
+    }
+  } else if (category === "디지털/가전") {
+    if (cats.includes("자동차") || cats.includes("차량")) {
+      // 차량용 전자기기도 생활가전으로
+      subCategory = "생활가전";
+    }
+  }
+
   return { category, subCategory };
+}
+
+/**
+ * 제목 키워드 기반 분류 후처리 — AI 오분류 교정
+ */
+export function fixClassification(
+  title: string,
+  result: CategoryResult
+): CategoryResult {
+  const t = title.toLowerCase();
+
+  // 자동차/차량 관련 → 생활/건강 > 생활용품
+  if (t.includes("자동차") || t.includes("차량") || t.includes("와이퍼") ||
+      t.includes("타이어") || t.includes("공기주입기") || t.includes("블랙박스") ||
+      t.includes("차량용") || t.includes("자동차용")) {
+    return { category: "생활/건강", subCategory: "생활용품" };
+  }
+
+  // 반려동물 관련
+  if (t.includes("강아지") || t.includes("고양이") || t.includes("반려") ||
+      t.includes("사료") || t.includes("배변패드") || t.includes("펫")) {
+    return { category: "생활/건강", subCategory: "반려동물" };
+  }
+
+  return result;
 }
 
 export async function classifySubCategoryWithGemini(
@@ -130,7 +191,10 @@ JSON 문자열 배열 ${items.length}개만 출력: ["중카테고리1", "중카
     return items.map((it, i) => {
       const sub = subs[i];
       const validSubs = SUB_CATEGORIES[it.category] || [];
-      return validSubs.includes(sub) ? sub : validSubs[0] || "";
+      const subCat = validSubs.includes(sub) ? sub : validSubs[0] || "";
+      // 제목 키워드로 오분류 교정
+      const fixed = fixClassification(it.title, { category: it.category, subCategory: subCat });
+      return fixed.subCategory;
     });
   } catch (e) {
     console.error("[classifySub] Gemini error:", e);
@@ -219,16 +283,17 @@ JSON 배열 ${titles.length}개만 출력: [{"category":"대카테고리","subCa
     const parsed = JSON.parse(text);
     const results: CategoryResult[] = Array.isArray(parsed) ? parsed : [];
 
-    return titles.map((_, i) => {
+    return titles.map((title, i) => {
       const r = results[i];
       if (!r || !VALID_CATEGORIES.includes(r.category)) {
-        return { ...DEFAULT_CATEGORY_RESULT };
+        return fixClassification(title, { ...DEFAULT_CATEGORY_RESULT });
       }
       const validSubs = SUB_CATEGORIES[r.category] || [];
       const subCategory = validSubs.includes(r.subCategory)
         ? r.subCategory
         : validSubs[0] || "";
-      return { category: r.category, subCategory };
+      // 제목 키워드로 오분류 교정
+      return fixClassification(title, { category: r.category, subCategory });
     });
   } catch (e) {
     console.error("[classify] Gemini error:", e);

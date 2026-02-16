@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,8 +58,9 @@ class ProductListState {
 class HotProductsNotifier extends StateNotifier<ProductListState> {
   static const _pageSize = 20;
 
-  /// feedOrder 사용 가능 여부 (첫 페이지에서 1회 판별)
   bool? _useFeedOrder;
+  int _startOffset = 0;
+  bool _wrapped = false;
 
   HotProductsNotifier() : super(const ProductListState()) {
     _fetchPage();
@@ -68,7 +70,6 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      // 첫 페이지에서만 feedOrder 존재 여부 확인
       if (_useFeedOrder == null) {
         final testSnap = await FirebaseFirestore.instance
             .collection('products')
@@ -81,11 +82,21 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
       Query query;
 
       if (_useFeedOrder!) {
-        query = FirebaseFirestore.instance
-            .collection('products')
-            .where('feedOrder', isGreaterThanOrEqualTo: 0)
-            .orderBy('feedOrder')
-            .limit(_pageSize);
+        final col = FirebaseFirestore.instance.collection('products');
+        if (_wrapped) {
+          // Phase 2: 0부터 시작점 직전까지만 조회 (중복 방지)
+          query = col
+              .where('feedOrder', isGreaterThanOrEqualTo: 0)
+              .where('feedOrder', isLessThan: _startOffset)
+              .orderBy('feedOrder')
+              .limit(_pageSize);
+        } else {
+          // Phase 1: 시작점부터 끝까지
+          query = col
+              .where('feedOrder', isGreaterThanOrEqualTo: _startOffset)
+              .orderBy('feedOrder')
+              .limit(_pageSize);
+        }
       } else {
         query = FirebaseFirestore.instance
             .collection('products')
@@ -102,6 +113,18 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
       final page = snapshot.docs.map((doc) {
         return Product.fromJson(doc.data() as Map<String, dynamic>);
       }).toList();
+
+      // feedOrder 끝에 도달 → 0부터 wrap around
+      if (page.length < _pageSize && _useFeedOrder! && !_wrapped && _startOffset > 0) {
+        _wrapped = true;
+        state = ProductListState(
+          products: [...state.products, ...page],
+          isLoading: false,
+          hasMore: true,
+          lastDocument: null,
+        );
+        return;
+      }
 
       state = ProductListState(
         products: [...state.products, ...page],
@@ -122,6 +145,17 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
 
   Future<void> refresh() async {
     _useFeedOrder = null;
+    _wrapped = false;
+
+    // 랜덤 시작점으로 순서 변경
+    final countSnap = await FirebaseFirestore.instance
+        .collection('products')
+        .where('feedOrder', isGreaterThanOrEqualTo: 0)
+        .count()
+        .get();
+    final total = countSnap.count ?? 0;
+    _startOffset = total > _pageSize ? Random().nextInt(total) : 0;
+
     state = const ProductListState();
     await _fetchPage();
   }
@@ -133,32 +167,53 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   static const _pageSize = 20;
   final CategoryFilter filter;
 
+  int _startOffset = 0;
+  bool _wrapped = false;
+  bool _useFallback = false;
+
   CategoryProductsNotifier(this.filter) : super(const ProductListState()) {
     _fetchPage();
   }
 
+  Query _buildQuery({bool wrapped = false}) {
+    final col = FirebaseFirestore.instance.collection('products');
+    Query base;
+
+    if (filter.subCategory != null) {
+      base = col
+          .where('category', isEqualTo: filter.category)
+          .where('subCategory', isEqualTo: filter.subCategory);
+    } else {
+      base = col.where('category', isEqualTo: filter.category);
+    }
+
+    if (wrapped && _startOffset > 0) {
+      // Phase 2: 0부터 시작점 직전까지만 (중복 방지)
+      return base
+          .where('categoryFeedOrder', isGreaterThanOrEqualTo: 0)
+          .where('categoryFeedOrder', isLessThan: _startOffset)
+          .orderBy('categoryFeedOrder')
+          .limit(_pageSize);
+    }
+
+    return base.orderBy('categoryFeedOrder').limit(_pageSize);
+  }
+
   Future<void> _fetchPage() async {
+    if (_useFallback) {
+      await _fetchPageFallback();
+      return;
+    }
+
     state = state.copyWith(isLoading: true);
 
     try {
-      Query query;
+      Query query = _buildQuery(wrapped: _wrapped);
 
-      if (filter.subCategory != null) {
-        query = FirebaseFirestore.instance
-            .collection('products')
-            .where('category', isEqualTo: filter.category)
-            .where('subCategory', isEqualTo: filter.subCategory)
-            .orderBy('categoryFeedOrder')
-            .limit(_pageSize);
-      } else {
-        query = FirebaseFirestore.instance
-            .collection('products')
-            .where('category', isEqualTo: filter.category)
-            .orderBy('categoryFeedOrder')
-            .limit(_pageSize);
-      }
-
-      if (state.lastDocument != null) {
+      // 첫 페이지에서 startOffset 적용
+      if (state.lastDocument == null && _startOffset > 0 && !_wrapped) {
+        query = query.startAt([_startOffset]);
+      } else if (state.lastDocument != null) {
         query = query.startAfterDocument(state.lastDocument!);
       }
 
@@ -166,6 +221,18 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
       final page = snapshot.docs.map((doc) {
         return Product.fromJson(doc.data() as Map<String, dynamic>);
       }).toList();
+
+      // 끝 도달 → 0부터 wrap around
+      if (page.length < _pageSize && !_wrapped && _startOffset > 0) {
+        _wrapped = true;
+        state = ProductListState(
+          products: [...state.products, ...page],
+          isLoading: false,
+          hasMore: true,
+          lastDocument: null,
+        );
+        return;
+      }
 
       state = ProductListState(
         products: [...state.products, ...page],
@@ -176,9 +243,9 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
     } catch (e) {
       debugPrint('[CategoryProducts] fetchPage error: $e');
 
-      // categoryFeedOrder 인덱스 미생성 시 dropRate 폴백
       if (e.toString().contains('failed-precondition') ||
           e.toString().contains('requires an index')) {
+        _useFallback = true;
         await _fetchPageFallback();
         return;
       }
@@ -188,6 +255,8 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> _fetchPageFallback() async {
+    state = state.copyWith(isLoading: true);
+
     try {
       Query query;
 
@@ -233,6 +302,24 @@ class CategoryProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> refresh() async {
+    _wrapped = false;
+    _useFallback = false;
+
+    // 랜덤 시작점으로 순서 변경
+    final countQuery = filter.subCategory != null
+        ? FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .where('subCategory', isEqualTo: filter.subCategory)
+            .count()
+        : FirebaseFirestore.instance
+            .collection('products')
+            .where('category', isEqualTo: filter.category)
+            .count();
+    final countSnap = await countQuery.get();
+    final total = countSnap.count ?? 0;
+    _startOffset = total > _pageSize ? Random().nextInt(total) : 0;
+
     state = const ProductListState();
     await _fetchPage();
   }
