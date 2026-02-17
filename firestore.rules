@@ -18,6 +18,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // keyword_snapshots: 가격 추이 히스토리 (클라이언트 읽기/쓰기)
+    match /keyword_snapshots/{keyword} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // device_profiles: 클라이언트에서 자기 프로필 생성/수정 허용
     match /device_profiles/{tokenHash} {
       allow read: if false;
