@@ -4,8 +4,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/product.dart';
 import '../../utils/url_launcher_helper.dart';
+import '../../utils/keyword_extractor.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/deal_badge.dart';
+import '../../widgets/keyword_price_section.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../utils/formatters.dart';
 import 'hero_image_section.dart';
@@ -26,10 +28,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Timer? _countdownTimer;
   Duration? _remaining;
 
+  late final List<String> _keywords;
+  int _keywordPage = 0;
   @override
   void initState() {
     super.initState();
     _initCountdown();
+    _keywords = extractKeywords(p);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(viewedProductsProvider.notifier).add(p);
     });
@@ -45,7 +50,6 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
         setState(() {
-          final end = DateTime.parse(p.saleEndDate!);
           _remaining = end.difference(DateTime.now());
           if (_remaining!.isNegative) {
             _remaining = null;
@@ -205,6 +209,18 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 ),
               ],
 
+              // 키워드 가격 추이 섹션
+              if (_keywords.isNotEmpty) ...[
+                Container(
+                  height: 8,
+                  color: t.brightness == Brightness.dark
+                      ? t.surface
+                      : t.border.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: 16),
+                _buildKeywordPriceSection(t),
+              ],
+
               SizedBox(height: 80 + bottomPadding),
             ],
           ),
@@ -234,6 +250,77 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildKeywordPriceSection(TteolgaTheme t) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text('가격 분석',
+              style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600)),
+        ),
+
+        // 키워드 탭 (스크롤 가능)
+        if (_keywords.length > 1) ...[
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: _keywords.asMap().entries.map((entry) {
+                final isSelected = entry.key == _keywordPage;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _keywordPage = entry.key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? t.textPrimary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                        border: isSelected
+                            ? null
+                            : Border.all(color: t.border, width: 0.5),
+                      ),
+                      child: Text(
+                        entry.value,
+                        style: TextStyle(
+                          color: isSelected ? t.bg : t.textSecondary,
+                          fontSize: 13,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ] else
+          const SizedBox(height: 8),
+
+        // AnimatedSwitcher로 키워드 전환
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: KeywordPriceSection(
+            key: ValueKey(_keywords[_keywordPage]),
+            keyword: _keywords[_keywordPage],
+          ),
+        ),
+      ],
     );
   }
 

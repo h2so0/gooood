@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
-import '../theme/app_theme.dart';
 
 class DealBadgeWidget extends ConsumerWidget {
   final DealBadge badge;

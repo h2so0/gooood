@@ -149,6 +149,14 @@ class NotificationService {
           importance: Importance.high,
         ),
       );
+      await androidPlugin.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'keyword_price_alert',
+          '키워드 목표가 알림',
+          description: '찜한 키워드가 목표가에 도달했을 때 알림',
+          importance: Importance.high,
+        ),
+      );
     }
 
     // 알림 내역 박스 열기
@@ -231,6 +239,9 @@ class NotificationService {
       case 'dailyBest':
         channelId = 'daily_best';
         break;
+      case 'keywordAlert':
+        channelId = 'keyword_price_alert';
+        break;
       case 'priceDrop':
       case 'categoryInterest':
       case 'smartDigest':
@@ -261,6 +272,55 @@ class NotificationService {
 
     // 내역 저장
     await _saveHistoryFromMessage(message);
+  }
+
+  // ── 키워드 가격 알림 ──
+
+  Future<void> showKeywordPriceAlert({
+    required String keyword,
+    required int currentMin,
+    required int targetPrice,
+  }) async {
+    final title = '목표가 도달!';
+    final body = '"$keyword" 최저가 ${_formatPrice(currentMin)}원 (목표: ${_formatPrice(targetPrice)}원)';
+
+    await _localPlugin.show(
+      'keyword_$keyword'.hashCode,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'keyword_price_alert',
+          '키워드 목표가 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      payload: 'keyword:$keyword',
+    );
+
+    // 내역 저장
+    final box = Hive.box<String>(_historyBoxName);
+    final record = {
+      'title': title,
+      'body': body,
+      'type': 'keywordAlert',
+      'keyword': keyword,
+      'timestamp': DateTime.now().toIso8601String(),
+      'isRead': false,
+    };
+    await box.add(jsonEncode(record));
+  }
+
+  String _formatPrice(int price) {
+    final str = price.toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(str[i]);
+    }
+    return buffer.toString();
   }
 
   // ── 로컬 알림 탭 처리 ──

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
+import '../providers/keyword_wishlist_provider.dart';
 import 'detail/product_detail_screen.dart';
 import 'search_screen.dart';
 import 'settings/settings_screen.dart';
+import 'wishlist/keyword_wishlist_screen.dart';
 import 'home/home_feed.dart';
 import 'category_feed.dart';
 
@@ -69,6 +71,62 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                   color: t.textTertiary, fontSize: 14)),
                         ],
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // 찜 버튼
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const KeywordWishlistScreen()),
+                  ),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: t.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: t.border, width: 0.5),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(Icons.bookmark_outline,
+                            color: t.textTertiary, size: 20),
+                        // 뱃지
+                        Consumer(builder: (context, ref, _) {
+                          final count =
+                              ref.watch(keywordWishlistProvider).length;
+                          if (count == 0) return const SizedBox.shrink();
+                          final label = count > 9 ? '9+' : '$count';
+                          return Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: t.drop,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                label,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
                     ),
                   ),
                 ),

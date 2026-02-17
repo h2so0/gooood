@@ -12,6 +12,8 @@ class HiveBoxes {
   static const priceHistory = 'price_history';
   static const trackerMeta = 'tracker_meta';
   static const notificationHistory = 'notification_history';
+  static const keywordWishlist = 'keyword_wishlist';
+  static const keywordTrackerMeta = 'keyword_tracker_meta';
 }
 
 /// Sub-category mapping (shared between backend & frontend)

@@ -1,7 +1,5 @@
 import '../models/product.dart';
 
-const minPrice = 5000;
-
 /// 제외: 통신사/약정/중고
 const blacklistKeywords = [
   '번호이동', '기기변경', '약정', '공시지원', '선택약정',
@@ -34,7 +32,7 @@ const majorBrands = [
 /// 기본 필터 (쓰레기 제거)
 List<Product> filterProducts(List<Product> products) {
   return products.where((p) {
-    if (p.currentPrice < minPrice) return false;
+    if (p.currentPrice <= 0) return false;
     final title = p.title;
     for (final kw in blacklistKeywords) {
       if (title.contains(kw)) return false;

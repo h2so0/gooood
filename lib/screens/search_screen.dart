@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
+import '../widgets/keyword_price_section.dart';
 import '../providers/providers.dart';
 import 'detail/product_detail_screen.dart';
 
@@ -71,10 +72,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               children: [
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
-                  child: Icon(Icons.arrow_back_ios_new,
-                      size: 18, color: t.textSecondary),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: t.card,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.arrow_back_ios_new,
+                        size: 16, color: t.textSecondary),
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Container(
                     height: 42,
@@ -131,7 +140,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       data: (list) =>
           list.map((tk) => tk.keyword).toList(),
       loading: () => _fallbackPopular,
-      error: (_, __) => _fallbackPopular,
+      error: (_, _) => _fallbackPopular,
     );
 
     return ListView(
@@ -185,23 +194,38 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           backgroundColor: t.card,
           onRefresh: () async {
             ref.invalidate(searchResultsProvider(_query));
+            ref.invalidate(keywordPriceAnalysisProvider(_query));
+            ref.invalidate(keywordPriceHistoryProvider(_query));
           },
-          child: MasonryGridView.count(
+          child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            itemCount: products.length,
-            itemBuilder: (context, i) => ProductGridCard(
-              product: products[i],
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ProductDetailScreen(product: products[i]),
+            slivers: [
+              // 가격 분석 섹션
+              SliverToBoxAdapter(
+                child: KeywordPriceSection(keyword: _query),
+              ),
+
+              // 기존 상품 그리드
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+                sliver: SliverMasonryGrid.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childCount: products.length,
+                  itemBuilder: (context, i) => ProductGridCard(
+                    product: products[i],
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProductDetailScreen(product: products[i]),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         );
       },

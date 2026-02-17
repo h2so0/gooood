@@ -10,11 +10,14 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'models/product.dart';
 import 'providers/notification_provider.dart';
+import 'providers/keyword_wishlist_provider.dart';
+import 'providers/keyword_price_provider.dart';
 import 'services/notification_service.dart';
 import 'services/device_profile_sync.dart';
 import 'theme/app_theme.dart';
 import 'screens/main_screen.dart';
 import 'screens/detail/product_detail_screen.dart';
+import 'screens/search_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -60,6 +63,7 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
     if (!kIsWeb) {
       _setupNotificationHandlers();
       _checkFirstPermission();
+      _triggerDailyKeywordCollection();
 
       // DEBUG: 테스트 알림 발송 (3초 후)
       assert(() {
@@ -76,6 +80,23 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       ref.read(notificationSettingsProvider.notifier).enableAllOnFirstPermission();
     }
+  }
+
+  /// 일별 키워드 가격 수집 트리거
+  void _triggerDailyKeywordCollection() {
+    // 앱 시작 후 5초 지연 (초기화 완료 대기)
+    Future.delayed(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      final wishItems = ref.read(keywordWishlistProvider);
+      if (wishItems.isEmpty) return;
+
+      final tracker = ref.read(keywordPriceTrackerProvider);
+      tracker.collectSnapshots(wishItems).then((_) {
+        debugPrint('[KeywordTracker] 일별 수집 완료');
+      }).catchError((e) {
+        debugPrint('[KeywordTracker] 일별 수집 실패: $e');
+      });
+    });
   }
 
   void _setupNotificationHandlers() {
@@ -122,9 +143,21 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
   }
 
   void _handleNotificationTap(Map<String, dynamic> data) {
+    // 키워드 알림 처리: payload가 "keyword:검색어" 형태
     final productId = data['productId'] as String?;
-    if (productId == null || productId.isEmpty) return;
+    if (productId != null && productId.startsWith('keyword:')) {
+      final keyword = productId.substring(8);
+      if (keyword.isNotEmpty) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => SearchScreen(initialQuery: keyword),
+          ),
+        );
+        return;
+      }
+    }
 
+    if (productId == null || productId.isEmpty) return;
     _navigateToProduct(productId);
   }
 

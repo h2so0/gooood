@@ -29,21 +29,35 @@ class SettingsScreen extends ConsumerWidget {
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 40),
         children: [
-          // Back
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: t.card,
-                  borderRadius: BorderRadius.circular(12),
+          // 헤더: 뒤로가기 + 제목
+          SizedBox(
+            height: 38,
+            child: Stack(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: t.card,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.arrow_back_ios_new,
+                          size: 16, color: t.textSecondary),
+                    ),
+                  ),
                 ),
-                child: Icon(Icons.arrow_back_ios_new,
-                    size: 16, color: t.textSecondary),
-              ),
+                Center(
+                  child: Text('설정',
+                      style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
