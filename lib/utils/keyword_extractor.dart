@@ -9,6 +9,17 @@ const _noiseWords = {
   '신품', '미개봉', '미개봉정품', '공식정품', '단독특가', '긴급', '한정',
 };
 
+/// 서술적 단어 (제품 정체성이 아닌 기능/수식어)
+const _descriptorWords = {
+  '무선', '유선', '블루투스', '노이즈캔슬링', '통화', '방수', '충전', '대용량',
+  '초경량', '접이식', '휴대용', '자동', '수동', '터치', '고급', '프리미엄',
+  '신형', '최신', '신제품', '올인원', '완전', '초고속', '저소음', '고성능',
+  '듀얼', '트리플', '쿼드', '와이드', '슬림', '미니', '맥스', '플러스',
+  '포터블', '스마트', '디지털', '아날로그', '초슬림', '초소형', '대형',
+  '고화질', '초고화질', '저전력', '고속', '급속', '일체형', '분리형',
+  '방진', '방습', '생활방수', '완전방수', '멀티', '다기능',
+};
+
 /// 스펙/컬러 패턴
 final _specPattern = RegExp(
   r'\b\d+[GT]B\b|\b\d+[GT]b\b|'
@@ -27,13 +38,31 @@ const _colorWords = {
   '그래파이트', '딥퍼플', '팬텀블랙', '크림', '라벤더',
 };
 
+/// 카테고리에서 토큰 추출 (슬래시로 분리, 가장 구체적인 것)
+Set<String> _getCategoryTokens(Product product) {
+  final tokens = <String>{};
+
+  for (final cat in [product.category3, product.category2]) {
+    if (cat == null || cat.isEmpty) continue;
+    // "이어폰/헤드폰" → ["이어폰", "헤드폰"]
+    for (final part in cat.split('/')) {
+      final trimmed = part.trim();
+      if (trimmed.isNotEmpty) tokens.add(trimmed);
+    }
+  }
+
+  return tokens;
+}
+
 /// 상품 제목에서 검색 키워드 후보 1~3개 추출
+///
+/// 서술어·카테고리 토큰을 제거하여 **제품 정체성 토큰**만 남긴 뒤 조합.
+///
+/// "삼성전자 갤럭시 버즈3 프로 무선 이어폰 노이즈캔슬링 블루투스 5.3 통화"
+///   → ["갤럭시 버즈3 프로", "갤럭시 버즈3", "갤럭시"]
 ///
 /// "Apple 에어팟 프로 2세대 MagSafe 충전케이스 [정품]"
 ///   → ["에어팟 프로 2세대", "에어팟 프로", "에어팟"]
-///
-/// "삼성전자 갤럭시 S24 울트라 256GB 자급제"
-///   → ["갤럭시 S24 울트라", "갤럭시 S24", "갤럭시"]
 List<String> extractKeywords(Product product) {
   var title = product.title;
 
@@ -59,15 +88,21 @@ List<String> extractKeywords(Product product) {
   // 4. 스펙 패턴 제거
   title = title.replaceAll(_specPattern, '');
 
-  // 5. 토큰 분리 및 필터링
+  // 5. 카테고리 토큰 수집
+  final categoryTokens = _getCategoryTokens(product);
+
+  // 6. 토큰 분리 및 필터링 → 정체성 토큰만 남김
   final tokens = title
       .split(RegExp(r'[\s/·,+]+'))
       .where((t) => t.isNotEmpty)
       .where((t) => !_noiseWords.contains(t))
+      .where((t) => !_descriptorWords.contains(t))
       .where((t) => !_colorWords.contains(t.toLowerCase()))
       .where((t) => t.length > 1 || RegExp(r'[가-힣]').hasMatch(t))
-      // 단순 숫자만 있는 토큰 제거
-      .where((t) => !RegExp(r'^\d+$').hasMatch(t))
+      // 단순 숫자만 있는 토큰 제거 (예: "5.3", "100")
+      .where((t) => !RegExp(r'^[\d.]+$').hasMatch(t))
+      // 카테고리 토큰 제거 (이어폰, 노트북 등)
+      .where((t) => !categoryTokens.contains(t))
       .toList();
 
   if (tokens.isEmpty) {
@@ -76,17 +111,17 @@ List<String> extractKeywords(Product product) {
     return [fallback];
   }
 
-  // 6. 후보 생성 (구체적 → 광범위)
+  // 7. 후보 생성 (구체적 → 광범위, 정체성 토큰만 사용)
   final candidates = <String>[];
 
   if (tokens.length >= 3) {
-    // 후보1: 핵심 토큰 3~4개
+    // 후보1: 정체성 토큰 전체 (최대 4개)
     final count1 = tokens.length >= 4 ? 4 : 3;
     candidates.add(tokens.take(count1).join(' '));
   }
 
   if (tokens.length >= 2) {
-    // 후보2: 핵심 토큰 2~3개
+    // 후보2: 앞 2~3개
     final count2 = tokens.length >= 3 ? 3 : 2;
     final c2 = tokens.take(count2).join(' ');
     if (!candidates.contains(c2)) candidates.add(c2);
@@ -99,10 +134,9 @@ List<String> extractKeywords(Product product) {
   }
 
   if (tokens.isNotEmpty) {
-    // 후보3: 핵심 토큰 1~2개
-    final c3 = tokens.length >= 2
-        ? tokens.take(2).join(' ')
-        : tokens.first;
+    // 후보3: 1~2개
+    final c3 =
+        tokens.length >= 2 ? tokens.take(2).join(' ') : tokens.first;
     if (!candidates.contains(c3)) candidates.add(c3);
 
     // 가장 광범위: 1개
@@ -111,6 +145,6 @@ List<String> extractKeywords(Product product) {
     }
   }
 
-  // 7. 최대 3개, 중복 제거
+  // 8. 최대 3개, 중복 제거
   return candidates.take(3).toList();
 }

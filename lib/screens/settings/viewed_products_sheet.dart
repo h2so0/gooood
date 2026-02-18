@@ -73,7 +73,7 @@ class ViewedProductsSheet extends ConsumerWidget {
                 padding:
                     EdgeInsets.fromLTRB(16, 8, 16, bottomPadding + 16),
                 itemCount: entries.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 0),
+                separatorBuilder: (_, _) => const SizedBox(height: 0),
                 itemBuilder: (context, i) {
                   final entry = entries[i];
                   return _ViewedProductTile(

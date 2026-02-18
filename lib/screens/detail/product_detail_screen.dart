@@ -318,6 +318,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           child: KeywordPriceSection(
             key: ValueKey(_keywords[_keywordPage]),
             keyword: _keywords[_keywordPage],
+            originalProduct: p,
           ),
         ),
       ],

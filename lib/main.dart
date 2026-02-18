@@ -24,27 +24,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await initializeDateFormatting('ko_KR');
-    await Hive.initFlutter();
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-
-    if (!kIsWeb) {
-      try {
-        final notiService = NotificationService();
-        await notiService.initialize();
-        await notiService.requestPermission();
-        await notiService.subscribeInitialTopics();
-        await DeviceProfileSync().initialize();
-      } catch (e) {
-        debugPrint('[Init] NotificationService 초기화 실패: $e');
-      }
-    }
-  } catch (e) {
-    debugPrint('[Init] 앱 초기화 실패: $e');
-  }
+  // 3개를 병렬 실행 (모두 독립적)
+  await Future.wait([
+    initializeDateFormatting('ko_KR'),
+    Hive.initFlutter(),
+    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+  ]);
 
   runApp(const ProviderScope(child: TteolgaApp()));
 }
@@ -61,6 +46,7 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
   void initState() {
     super.initState();
     if (!kIsWeb) {
+      _initializeServices(); // fire-and-forget (비차단)
       _setupNotificationHandlers();
       _checkFirstPermission();
       _triggerDailyKeywordCollection();
@@ -72,6 +58,23 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
         });
         return true;
       }());
+    }
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      final notiService = NotificationService();
+      // DeviceProfileSync는 알림 초기화와 독립적이므로 병렬 시작
+      final deviceFuture = DeviceProfileSync().initialize();
+
+      await notiService.initialize();
+      // 권한 요청과 토픽 구독은 순서가 필요하지만 DeviceProfileSync와는 병렬
+      await notiService.requestPermission();
+      await notiService.subscribeInitialTopics();
+
+      await deviceFuture;
+    } catch (e) {
+      debugPrint('[Init] Service initialization error: $e');
     }
   }
 

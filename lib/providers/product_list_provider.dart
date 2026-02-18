@@ -58,7 +58,7 @@ class ProductListState {
 class HotProductsNotifier extends StateNotifier<ProductListState> {
   static const _pageSize = 20;
 
-  bool? _useFeedOrder;
+  bool _useFeedOrder = true;
   int _startOffset = 0;
   bool _wrapped = false;
 
@@ -70,18 +70,9 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      if (_useFeedOrder == null) {
-        final testSnap = await FirebaseFirestore.instance
-            .collection('products')
-            .where('feedOrder', isGreaterThanOrEqualTo: 0)
-            .limit(1)
-            .get();
-        _useFeedOrder = testSnap.docs.isNotEmpty;
-      }
-
       Query query;
 
-      if (_useFeedOrder!) {
+      if (_useFeedOrder) {
         final col = FirebaseFirestore.instance.collection('products');
         if (_wrapped) {
           // Phase 2: 0부터 시작점 직전까지만 조회 (중복 방지)
@@ -115,7 +106,14 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
       }).toList();
 
       // feedOrder 끝에 도달 → 0부터 wrap around
-      if (page.length < _pageSize && _useFeedOrder! && !_wrapped && _startOffset > 0) {
+      // feedOrder 쿼리가 빈 결과 → dropRate 폴백
+      if (page.isEmpty && _useFeedOrder && state.products.isEmpty) {
+        _useFeedOrder = false;
+        state = state.copyWith(isLoading: false);
+        return _fetchPage();
+      }
+
+      if (page.length < _pageSize && _useFeedOrder && !_wrapped && _startOffset > 0) {
         _wrapped = true;
         state = ProductListState(
           products: [...state.products, ...page],
@@ -144,7 +142,7 @@ class HotProductsNotifier extends StateNotifier<ProductListState> {
   }
 
   Future<void> refresh() async {
-    _useFeedOrder = null;
+    _useFeedOrder = true;
     _wrapped = false;
 
     // 랜덤 시작점으로 순서 변경

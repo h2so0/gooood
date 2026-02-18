@@ -37,8 +37,8 @@ class ProductImage extends StatelessWidget {
     return CachedNetworkImage(
       imageUrl: proxyImage(imageUrl),
       fit: fit,
-      placeholder: (_, __) => Container(color: t.surface),
-      errorWidget: (_, __, ___) => Container(
+      placeholder: (_, _) => Container(color: t.surface),
+      errorWidget: (_, _, _) => Container(
         color: t.surface,
         child: errorIcon != null
             ? Center(

@@ -82,7 +82,7 @@ class ThemeToggleRow extends ConsumerWidget {
               height: 28,
               child: Switch.adaptive(
                 value: isDark,
-                activeColor: t.textPrimary,
+                activeThumbColor: t.textPrimary,
                 activeTrackColor: t.textTertiary,
                 inactiveThumbColor: t.textTertiary,
                 inactiveTrackColor: t.border,
@@ -139,7 +139,7 @@ class ToggleRow extends StatelessWidget {
               height: 28,
               child: Switch.adaptive(
                 value: value,
-                activeColor: t.textPrimary,
+                activeThumbColor: t.textPrimary,
                 activeTrackColor: t.textTertiary,
                 inactiveThumbColor: t.textTertiary,
                 inactiveTrackColor: t.border,

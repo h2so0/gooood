@@ -9,14 +9,28 @@ class KeywordPriceAnalyzer {
 
   KeywordPriceAnalyzer(this._api);
 
-  /// 키워드로 실시간 가격 분석 (API 100개 조회 → 분석)
-  Future<KeywordPriceSnapshot> analyze(String keyword) async {
+  /// 키워드로 실시간 가격 분석 (API 100개 조회 → 다층 필터링 → 분석)
+  ///
+  /// [originalProduct]가 있으면 카테고리 필터도 적용.
+  Future<KeywordPriceSnapshot> analyze(
+    String keyword, {
+    Product? originalProduct,
+  }) async {
     final raw = await _api.search(
       query: keyword,
       display: 100,
       sort: 'sim',
     );
-    final products = filterParts(filterProducts(raw));
+
+    // 다층 필터링 파이프라인
+    var products = filterProducts(raw);         // 기존+확장: 가격0, 통신사, 중고, 렌탈 제거
+    products = filterParts(products);            // 기존+확장: 부품/액세서리 제거
+    products = filterRentalProducts(products);   // 신규: 정규식 렌탈 패턴 제거
+    products = filterByKeywordRelevance(products, keyword); // 신규: 키워드 토큰 전체 포함
+    if (originalProduct != null) {
+      products = filterByCategory(products, originalProduct); // 신규: 카테고리 필터
+    }
+    products = filterPriceOutliers(products);    // 신규: IQR 이상치 제거
 
     if (products.isEmpty) {
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());

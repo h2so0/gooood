@@ -2,6 +2,7 @@ import 'dart:math' show sin, pi;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/keyword_price_data.dart';
+import '../models/product.dart';
 import '../providers/keyword_price_provider.dart';
 import '../providers/keyword_wishlist_provider.dart';
 import '../theme/app_theme.dart';
@@ -13,17 +14,22 @@ import 'charts/price_trend_chart.dart';
 class KeywordPriceSection extends ConsumerWidget {
   final String keyword;
   final bool showWishlistButton;
+  final Product? originalProduct;
 
   const KeywordPriceSection({
     super.key,
     required this.keyword,
     this.showWishlistButton = true,
+    this.originalProduct,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(tteolgaThemeProvider);
-    final analysis = ref.watch(keywordPriceAnalysisProvider(keyword));
+    final analysis = originalProduct != null
+        ? ref.watch(keywordPriceAnalysisWithProductProvider(
+            (keyword: keyword, product: originalProduct!)))
+        : ref.watch(keywordPriceAnalysisProvider(keyword));
     final history = ref.watch(keywordPriceHistoryProvider(keyword));
 
     return Container(
