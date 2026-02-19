@@ -710,8 +710,24 @@ export const productPage = onRequest(
   <script>
     var ua=navigator.userAgent.toLowerCase();
     var isIOS=/iphone|ipad|ipod/.test(ua);
-    var storeUrl=isIOS?'https://apps.apple.com/app/id6746498814':'https://play.google.com/store/apps/details?id=com.goooood.app';
-    window.onload=function(){var b=document.getElementById('store-btn');if(b)b.href=storeUrl};
+    var isAndroid=/android/.test(ua);
+    var storeUrl=isIOS?'https://apps.apple.com/kr/app/id6759038924':'https://play.google.com/store/apps/details?id=com.goooood.app';
+    var appUrl='https://gooddeal-app.web.app'+location.pathname;
+    var isInApp=/kakaotalk|naver|line|instagram|fbav|twitter|wv\)/.test(ua);
+
+    window.onload=function(){
+      var b=document.getElementById('store-btn');
+      if(b)b.href=storeUrl;
+
+      // 인앱 브라우저: 외부 브라우저로 열어서 Universal Link 작동하게
+      if(isInApp&&isIOS){
+        location.href='x-web-search://?'+encodeURIComponent(appUrl);
+        setTimeout(function(){location.href=appUrl},100);
+        setTimeout(function(){location.href=storeUrl},1500);
+      } else if(isInApp&&isAndroid){
+        location.href='intent://gooddeal-app.web.app'+location.pathname+'#Intent;scheme=https;package=com.goooood.app;end';
+      }
+    };
   </script>
 </head>
 <body>
@@ -720,7 +736,7 @@ export const productPage = onRequest(
     <h1>${esc(title)}</h1>
     ${price ? `<div class="price">${esc(price)}</div>` : ""}
     <p>굿딜 앱에서 확인해보세요!</p>
-    <a id="store-btn" class="btn" href="https://apps.apple.com/app/id6746498814">앱에서 보기</a>
+    <a id="store-btn" class="btn" href="https://apps.apple.com/kr/app/id6759038924">앱에서 보기</a>
     <p class="sub">앱이 설치되어 있다면 자동으로 열립니다</p>
   </div>
 </body>
