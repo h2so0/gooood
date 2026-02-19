@@ -19,6 +19,7 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   int _tabIndex = 0;
+  final Set<int> _visitedTabs = {0}; // 홈만 먼저 빌드
 
   static const _tabs = [
     '홈',
@@ -30,6 +31,20 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     '스포츠/레저',
     '출산/육아',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 홈 렌더링 후 1초 뒤 나머지 카테고리 프리페치
+    Future.delayed(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {
+        for (int i = 1; i < _tabs.length; i++) {
+          _visitedTabs.add(i);
+        }
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +181,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() => _tabIndex = i),
+                    onTap: () => setState(() {
+                      _tabIndex = i;
+                      _visitedTabs.add(i);
+                    }),
                     child: Container(
                       padding:
                           const EdgeInsets.symmetric(horizontal: 16),
@@ -199,14 +217,22 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
           const SizedBox(height: 8),
 
-          // Content
+          // Content — 방문한 탭은 IndexedStack으로 유지 (재로딩 방지)
           Expanded(
-            child: _tabIndex == 0
-                ? HomeFeed(onTap: _openDetail)
-                : CategoryFeed(
-                    category: _tabs[_tabIndex],
-                    onTap: _openDetail,
-                  ),
+            child: IndexedStack(
+              index: _tabIndex,
+              children: List.generate(_tabs.length, (i) {
+                if (!_visitedTabs.contains(i)) {
+                  return const SizedBox.shrink();
+                }
+                return i == 0
+                    ? HomeFeed(onTap: _openDetail)
+                    : CategoryFeed(
+                        category: _tabs[i],
+                        onTap: _openDetail,
+                      );
+              }),
+            ),
           ),
         ],
       ),

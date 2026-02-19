@@ -126,21 +126,26 @@ List<Product> filterByCategory(List<Product> products, Product original) {
   }).toList();
 }
 
-/// 키워드 토큰 전체 포함 필터
-/// 키워드의 모든 주요 토큰이 상품 제목에 포함되어야 통과.
+/// 키워드 토큰 관련성 필터
+/// 키워드의 주요 토큰 중 절반 이상이 상품 제목에 포함되어야 통과.
 /// 1글자 이하 토큰은 무시.
 List<Product> filterByKeywordRelevance(
     List<Product> products, String keyword) {
-  final tokens = keyword
+  // "외", "세트", "묶음" 등 의미 없는 접미어 제거
+  final cleaned = keyword.replaceAll(RegExp(r'\s+(외|세트|묶음|패키지)\s*$'), '');
+  final tokens = cleaned
       .split(RegExp(r'\s+'))
       .where((t) => t.length > 1)
       .toList();
 
   if (tokens.isEmpty) return products;
 
+  final threshold = (tokens.length / 2).ceil(); // 절반 이상 매칭
+
   return products.where((p) {
     final title = p.title;
-    return tokens.every((token) => title.contains(token));
+    final matchCount = tokens.where((token) => title.contains(token)).length;
+    return matchCount >= threshold;
   }).toList();
 }
 

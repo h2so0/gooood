@@ -22,15 +22,14 @@ class KeywordPriceAnalyzer {
       sort: 'sim',
     );
 
-    // 다층 필터링 파이프라인
-    var products = filterProducts(raw);         // 기존+확장: 가격0, 통신사, 중고, 렌탈 제거
-    products = filterParts(products);            // 기존+확장: 부품/액세서리 제거
-    products = filterRentalProducts(products);   // 신규: 정규식 렌탈 패턴 제거
-    products = filterByKeywordRelevance(products, keyword); // 신규: 키워드 토큰 전체 포함
-    if (originalProduct != null) {
-      products = filterByCategory(products, originalProduct); // 신규: 카테고리 필터
+    // 다층 필터링 파이프라인 (search()가 이미 filterProducts 적용)
+    var products = filterParts(raw);             // 부품/액세서리 제거
+    products = filterRentalProducts(products);   // 정규식 렌탈 패턴 제거
+    products = filterByKeywordRelevance(products, keyword); // 키워드 토큰 절반 이상 포함
+    if (originalProduct != null && products.length > 5) {
+      products = filterByCategory(products, originalProduct); // 카테고리 필터 (충분한 결과가 있을 때만)
     }
-    products = filterPriceOutliers(products);    // 신규: IQR 이상치 제거
+    products = filterPriceOutliers(products);    // IQR 이상치 제거
 
     if (products.isEmpty) {
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
