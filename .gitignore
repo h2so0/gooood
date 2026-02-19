@@ -48,6 +48,11 @@ app.*.map.json
 android/key.properties
 android/app/upload-keystore.jks
 
+# Firebase config (API keys)
+**/google-services.json
+**/GoogleService-Info.plist
+lib/firebase_options.dart
+
 # Firebase (generated / local)
 .firebase/
 firebase-debug.log
