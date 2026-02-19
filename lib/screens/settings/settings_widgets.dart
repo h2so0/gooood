@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 import '../../providers/notification_provider.dart';
 import '../../services/device_profile_sync.dart';
 
-class TapRow extends StatelessWidget {
+class TapRow extends ConsumerWidget {
   final IconData icon;
   final String label;
   final String? trailing;
@@ -19,9 +19,8 @@ class TapRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final isDark = t.brightness == Brightness.dark;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(tteolgaThemeProvider);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -29,31 +28,18 @@ class TapRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
-            Icon(icon,
-                color: isDark
-                    ? const Color(0xFFAAAAAA)
-                    : const Color(0xFF555555),
-                size: 20),
+            Icon(icon, color: t.textSecondary, size: 20),
             const SizedBox(width: 14),
             Text(label,
-                style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 15)),
+                style: TextStyle(color: t.textPrimary, fontSize: 15)),
             const Spacer(),
             if (trailing != null) ...[
               Text(trailing!,
-                  style: TextStyle(
-                      color: isDark
-                          ? const Color(0xFF666666)
-                          : const Color(0xFFAAAAAA),
-                      fontSize: 13)),
+                  style: TextStyle(color: t.textTertiary, fontSize: 13)),
               const SizedBox(width: 4),
             ],
             Icon(Icons.chevron_right,
-                color: isDark
-                    ? const Color(0xFF666666)
-                    : const Color(0xFFAAAAAA),
-                size: 18),
+                color: t.textTertiary, size: 18),
           ],
         ),
       ),

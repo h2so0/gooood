@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../models/product.dart';
 import '../services/device_profile_sync.dart';
+import '../utils/hive_helper.dart';
 
 class ViewedProductEntry {
   final Product product;
@@ -47,12 +47,7 @@ class ViewedProductsNotifier extends StateNotifier<List<ViewedProductEntry>> {
     _load();
   }
 
-  Future<Box<String>> _openBox() async {
-    if (!Hive.isBoxOpen(_boxName)) {
-      return Hive.openBox<String>(_boxName);
-    }
-    return Hive.box<String>(_boxName);
-  }
+  Future<Box<String>> _openBox() => getOrOpenBox<String>(_boxName);
 
   Future<void> _load() async {
     final box = await _openBox();

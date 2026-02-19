@@ -68,50 +68,49 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
         await ref.read(hotProductsProvider.notifier).refresh();
         ref.invalidate(trendKeywordsProvider);
       },
-      child: ListView(
+      child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics()),
-        padding: EdgeInsets.zero,
-        children: [
-          const SizedBox(height: 6),
-          trendKeywords.when(
-            data: (keywords) {
-              if (keywords.isEmpty) return const SizedBox();
-              return _buildTrendBar(t, keywords);
-            },
-            loading: () => const SizedBox(height: 44),
-            error: (_, _) => const SizedBox(),
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 6)),
+          SliverToBoxAdapter(
+            child: trendKeywords.when(
+              data: (keywords) {
+                if (keywords.isEmpty) return const SizedBox();
+                return _buildTrendBar(t, keywords);
+              },
+              loading: () => const SizedBox(height: 44),
+              error: (_, _) => const SizedBox(),
+            ),
           ),
-
-          const SizedBox(height: 16),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: CoupangBanner(),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: CoupangBanner(),
+            ),
           ),
-          const SizedBox(height: 20),
-
-          _sectionTitle(t, '오늘의 핫딜'),
-          const SizedBox(height: 8),
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          SliverToBoxAdapter(child: _sectionTitle(t, '오늘의 핫딜')),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           if (products.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('핫딜 상품을 불러오는 중...',
-                  style:
-                      TextStyle(color: t.textTertiary, fontSize: 13)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text('핫딜 상품을 불러오는 중...',
+                    style:
+                        TextStyle(color: t.textTertiary, fontSize: 13)),
+              ),
             )
           else
-            Padding(
+            SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: MasonryGridView.count(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
+              sliver: SliverMasonryGrid.count(
                 crossAxisCount: 2,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                itemCount: products.length,
+                childCount: products.length,
                 itemBuilder: (context, i) => ProductGridCard(
                   product: products[i],
                   onTap: () => widget.onTap(products[i]),
@@ -119,13 +118,15 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
               ),
             ),
           if (hotState.isLoading && hotState.hasMore && products.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                  child:
-                      CircularProgressIndicator(color: t.textTertiary)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                    child:
+                        CircularProgressIndicator(color: t.textTertiary)),
+              ),
             ),
-          const SizedBox(height: 40),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );

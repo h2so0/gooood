@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_icon_button.dart';
 import '../../widgets/product_image.dart';
 
 /// 고정 헤더 (뒤로가기 / 공유)
@@ -38,17 +39,11 @@ class DetailHeader extends StatelessWidget {
   Widget _headerButton(
       {required IconData icon, required VoidCallback onTap}) {
     final t = theme;
-    return GestureDetector(
+    return AppIconButton(
+      icon: icon,
       onTap: onTap,
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: t.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, size: 16, color: t.textPrimary),
-      ),
+      backgroundColor: t.textPrimary.withValues(alpha: 0.06),
+      iconColor: t.textPrimary,
     );
   }
 }
@@ -78,6 +73,9 @@ class HeroImageSection extends StatelessWidget {
         fit: BoxFit.contain,
         errorIcon: Icons.shopping_bag_outlined,
         errorIconSize: 48,
+        memCacheWidth: (MediaQuery.of(context).size.width *
+                MediaQuery.devicePixelRatioOf(context))
+            .toInt(),
       ),
     );
   }

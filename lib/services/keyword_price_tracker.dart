@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../models/keyword_price_data.dart';
 import '../models/keyword_wishlist.dart';
+import '../utils/hive_helper.dart';
 import 'cache/memory_cache.dart';
 import 'keyword_price_analyzer.dart';
 import 'notification_service.dart';
@@ -154,10 +154,5 @@ class KeywordPriceTracker {
     return keyword.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_');
   }
 
-  Future<Box<dynamic>> _openMetaBox() async {
-    if (Hive.isBoxOpen(_metaBoxName)) {
-      return Hive.box(_metaBoxName);
-    }
-    return Hive.openBox(_metaBoxName);
-  }
+  Future<Box<dynamic>> _openMetaBox() => getOrOpenBox<dynamic>(_metaBoxName);
 }

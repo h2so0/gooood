@@ -21,7 +21,7 @@ import {
   cleanupOldProducts,
   cleanupOldNotificationRecords,
 } from "./utils";
-import { backfillSubCategories } from "./classify";
+import { backfillSubCategories, backfillSearchKeywords } from "./classify";
 import {
   sendToTopic,
   sendToDevice,
@@ -596,6 +596,13 @@ export const manualSync = onRequest(
       results.push(`backfill: ${backfilled}`);
     } catch (e) {
       results.push(`backfill: ERROR ${e}`);
+    }
+
+    try {
+      const kwBackfilled = await backfillSearchKeywords();
+      results.push(`backfillKeywords: ${kwBackfilled}`);
+    } catch (e) {
+      results.push(`backfillKeywords: ERROR ${e}`);
     }
 
     try {

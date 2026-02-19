@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../constants/app_constants.dart';
 import '../models/keyword_wishlist.dart';
 import '../services/analytics_service.dart';
 import '../services/device_profile_sync.dart';
 import '../services/keyword_price_tracker.dart';
+import '../utils/hive_helper.dart';
 import 'keyword_price_provider.dart';
 
 final _maxWishlistCount = AppLimits.maxWishlistCount;
@@ -95,11 +95,8 @@ class KeywordWishlistNotifier extends StateNotifier<List<KeywordWishItem>> {
     }
   }
 
-  Future<Box<String>> _openBox() async {
-    const name = HiveBoxes.keywordWishlist;
-    if (Hive.isBoxOpen(name)) return Hive.box<String>(name);
-    return Hive.openBox<String>(name);
-  }
+  Future<Box<String>> _openBox() =>
+      getOrOpenBox<String>(HiveBoxes.keywordWishlist);
 }
 
 final keywordWishlistProvider =

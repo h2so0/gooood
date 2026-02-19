@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_icon_button.dart';
 
 enum LegalType { terms, privacy }
 
@@ -24,18 +25,11 @@ class LegalScreen extends ConsumerWidget {
           // Back
           Align(
             alignment: Alignment.centerLeft,
-            child: GestureDetector(
+            child: AppIconButton(
+              icon: Icons.arrow_back_ios_new,
               onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: t.card,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.arrow_back_ios_new,
-                    size: 16, color: t.textSecondary),
-              ),
+              backgroundColor: t.card,
+              iconColor: t.textSecondary,
             ),
           ),
           const SizedBox(height: 24),

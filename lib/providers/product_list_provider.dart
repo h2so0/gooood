@@ -109,11 +109,15 @@ abstract class PaginatedProductsNotifier
         return;
       }
 
+      // 기존 ID 셋으로 중복 제거
+      final existingIds = state.products.map((p) => p.id).toSet();
+      final deduped = page.where((p) => !existingIds.contains(p.id)).toList();
+
       // Wrap around: 끝에 도달 → 0부터 재시작
       if (page.length < pageSize && !wrapped && startOffset > 0) {
         wrapped = true;
         state = ProductListState(
-          products: [...state.products, ...page],
+          products: [...state.products, ...deduped],
           isLoading: false,
           hasMore: true,
           lastDocument: null,
@@ -122,7 +126,7 @@ abstract class PaginatedProductsNotifier
       }
 
       state = ProductListState(
-        products: [...state.products, ...page],
+        products: [...state.products, ...deduped],
         isLoading: false,
         hasMore: page.length >= pageSize,
         lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
@@ -236,6 +240,13 @@ class CategoryProductsNotifier extends PaginatedProductsNotifier {
       return base
           .where('categoryFeedOrder', isGreaterThanOrEqualTo: 0)
           .where('categoryFeedOrder', isLessThan: startOffset)
+          .orderBy('categoryFeedOrder')
+          .limit(PaginatedProductsNotifier.pageSize);
+    }
+
+    if (startOffset > 0) {
+      return base
+          .where('categoryFeedOrder', isGreaterThanOrEqualTo: startOffset)
           .orderBy('categoryFeedOrder')
           .limit(PaginatedProductsNotifier.pageSize);
     }

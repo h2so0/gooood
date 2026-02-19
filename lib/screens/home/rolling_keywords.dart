@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/trend_data.dart';
 import '../../theme/app_theme.dart';
 
 /// 한줄 롤링 인기 검색어
-class RollingKeywords extends StatefulWidget {
+class RollingKeywords extends ConsumerStatefulWidget {
   final List<TrendKeyword> keywords;
   final void Function(String keyword)? onTap;
   const RollingKeywords({super.key, required this.keywords, this.onTap});
 
   @override
-  State<RollingKeywords> createState() => _RollingKeywordsState();
+  ConsumerState<RollingKeywords> createState() => _RollingKeywordsState();
 }
 
-class _RollingKeywordsState extends State<RollingKeywords> {
+class _RollingKeywordsState extends ConsumerState<RollingKeywords> {
   int _currentIndex = 0;
 
   @override
@@ -68,8 +69,7 @@ class _RollingKeywordsState extends State<RollingKeywords> {
   Widget build(BuildContext context) {
     if (widget.keywords.isEmpty) return const SizedBox();
     final kw = widget.keywords[_currentIndex];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tt = isDark ? TteolgaTheme.dark : TteolgaTheme.light;
+    final t = ref.watch(tteolgaThemeProvider);
 
     return GestureDetector(
       onTap: () => widget.onTap?.call(kw.keyword),
@@ -93,7 +93,7 @@ class _RollingKeywordsState extends State<RollingKeywords> {
             Text(
               '${_currentIndex + 1}',
               style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.black38,
+                color: t.textTertiary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -105,12 +105,12 @@ class _RollingKeywordsState extends State<RollingKeywords> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: isDark ? Colors.white70 : Colors.black87,
+                  color: t.textSecondary,
                   fontSize: 13,
                 ),
               ),
             ),
-            _buildMiniRankChange(tt, kw.rankChange),
+            _buildMiniRankChange(t, kw.rankChange),
           ],
         ),
       ),

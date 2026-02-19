@@ -328,6 +328,72 @@ JSON 배열의 배열로 응답: [["키워드1","키워드2"], ["키워드1"], .
   }
 }
 
+export async function backfillSearchKeywords(): Promise<number> {
+  const db = admin.firestore();
+  let total = 0;
+
+  // 상위 2000개 상품 조회 후 searchKeywords 누락분 필터
+  const snap = await db
+    .collection("products")
+    .orderBy("dropRate", "desc")
+    .limit(2000)
+    .get();
+
+  if (snap.empty) return 0;
+
+  const needsKeywords = snap.docs.filter((doc) => {
+    const data = doc.data();
+    const kws = data.searchKeywords;
+    return !Array.isArray(kws) || kws.length === 0;
+  });
+
+  if (needsKeywords.length === 0) {
+    console.log("[backfillKeywords] all products already have searchKeywords");
+    return 0;
+  }
+
+  console.log(`[backfillKeywords] ${needsKeywords.length} products need keywords`);
+
+  for (let i = 0; i < needsKeywords.length; i += AI_FULL_BATCH) {
+    const batch = needsKeywords.slice(i, i + AI_FULL_BATCH);
+    const items = batch.map((doc) => {
+      const d = doc.data();
+      return {
+        title: (d.title as string) || "",
+        brand: (d.brand as string | null) ?? null,
+        category1: (d.category1 as string) || "",
+        category2: (d.category2 as string | null) ?? null,
+        category3: (d.category3 as string | null) ?? null,
+      };
+    });
+
+    const kwResults = await generateSearchKeywords(items);
+
+    try {
+      const writeBatch = db.batch();
+      let batchCount = 0;
+      batch.forEach((doc, idx) => {
+        const kws = kwResults[idx];
+        if (kws && kws.length > 0) {
+          writeBatch.set(doc.ref, { searchKeywords: kws }, { merge: true });
+          batchCount++;
+        }
+      });
+      if (batchCount > 0) {
+        await writeBatch.commit();
+        total += batchCount;
+      }
+    } catch (e) {
+      console.error(`[backfillKeywords] batch error at ${i}:`, e);
+    }
+
+    if (i + AI_FULL_BATCH < needsKeywords.length) await sleep(DELAYS.AI_BATCH);
+  }
+
+  console.log(`[backfillKeywords] ${total} products got searchKeywords`);
+  return total;
+}
+
 export async function backfillSubCategories(): Promise<number> {
   const db = admin.firestore();
   let total = 0;

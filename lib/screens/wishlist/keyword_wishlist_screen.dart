@@ -7,6 +7,8 @@ import '../../providers/keyword_wishlist_provider.dart';
 import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../utils/snackbar_helper.dart';
+import '../../widgets/screen_header.dart';
 import '../detail/product_detail_screen.dart';
 import '../search_screen.dart';
 import 'target_price_sheet.dart';
@@ -27,36 +29,7 @@ class KeywordWishlistScreen extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 40),
         children: [
           // 헤더: 뒤로가기 + 제목
-          SizedBox(
-            height: 38,
-            child: Stack(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new,
-                          size: 16, color: t.textSecondary),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Text('저장',
-                      style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
+          ScreenHeader(theme: t, title: '저장'),
           const SizedBox(height: 20),
 
           if (items.isEmpty)
@@ -185,15 +158,7 @@ class _WishlistCard extends ConsumerWidget {
                 ref
                     .read(keywordWishlistProvider.notifier)
                     .remove(item.keyword);
-                ScaffoldMessenger.of(context)
-                  ..clearSnackBars()
-                  ..showSnackBar(SnackBar(
-                    content: Text('${item.keyword} 삭제됨',
-                        style: const TextStyle(fontSize: 13)),
-                    backgroundColor: t.card,
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                  ));
+                showAppSnackBar(context, t, '${item.keyword} 삭제됨');
               }, color: t.textTertiary),
             ],
           ),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/product_card.dart';
 import '../widgets/keyword_price_section.dart';
 import '../providers/providers.dart';
@@ -75,18 +76,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                GestureDetector(
+                AppIconButton(
+                  icon: Icons.arrow_back_ios_new,
                   onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: t.card,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(Icons.arrow_back_ios_new,
-                        size: 16, color: t.textSecondary),
-                  ),
+                  backgroundColor: t.card,
+                  iconColor: t.textSecondary,
                 ),
                 const SizedBox(width: 10),
                 Expanded(

@@ -163,8 +163,9 @@ List<String> _buildAnchorKeywords(
   List<String> anchors,
   String effectiveBrand,
 ) {
-  // 제목에서 앵커 토큰을 찾고, 그 앞의 수식어를 포함
+  // 제목에서 앵커 토큰을 찾고, 앞뒤 수식어를 포함
   final candidates = <String>[];
+  final bareAnchors = <String>[]; // 단독 앵커는 후순위
 
   for (final anchor in anchors) {
     // 앵커가 토큰에 포함되는 위치 찾기
@@ -178,28 +179,46 @@ List<String> _buildAnchorKeywords(
     final anchorToken = allTokens[anchorIdx];
 
     // 앵커 바로 앞의 비필터 토큰들을 수식어로 수집 (최대 2개)
-    final modifiers = <String>[];
-    for (int i = anchorIdx - 1; i >= 0 && modifiers.length < 2; i--) {
+    final prefixMods = <String>[];
+    for (int i = anchorIdx - 1; i >= 0 && prefixMods.length < 2; i--) {
       final t = allTokens[i];
       if (_isFilteredToken(t)) break;
-      modifiers.insert(0, t);
+      prefixMods.insert(0, t);
     }
 
-    // 후보1: 수식어 + 앵커 (예: "긴팔 티셔츠")
-    if (modifiers.isNotEmpty) {
-      final full = [...modifiers, anchorToken].join(' ');
+    // 앵커 바로 뒤의 비필터 토큰들도 수식어로 수집 (최대 2개)
+    final suffixMods = <String>[];
+    for (int i = anchorIdx + 1;
+        i < allTokens.length && suffixMods.length < 2;
+        i++) {
+      final t = allTokens[i];
+      if (_isFilteredToken(t)) break;
+      suffixMods.add(t);
+    }
+
+    // 후보1: 앞수식어 + 앵커 + 뒷수식어 (예: "긴팔 티셔츠 오버핏")
+    final allMods = [...prefixMods, anchorToken, ...suffixMods];
+    if (prefixMods.isNotEmpty || suffixMods.isNotEmpty) {
+      final full = allMods.join(' ');
       if (!candidates.contains(full)) candidates.add(full);
     }
 
-    // 후보2: 앵커만 (예: "티셔츠")
-    if (!candidates.contains(anchorToken)) candidates.add(anchorToken);
+    // 후보2: 앞수식어 + 앵커 (앞수식어가 있을 때만)
+    if (prefixMods.isNotEmpty) {
+      final prefixed = [...prefixMods, anchorToken].join(' ');
+      if (!candidates.contains(prefixed)) candidates.add(prefixed);
+    }
+
+    // 앵커 + 뒷수식어 (앞수식어가 없을 때)
+    if (prefixMods.isEmpty && suffixMods.isNotEmpty) {
+      final suffixed = [anchorToken, ...suffixMods].join(' ');
+      if (!candidates.contains(suffixed)) candidates.add(suffixed);
+    }
+
+    // 단독 앵커는 후순위로 보관
+    if (!bareAnchors.contains(anchorToken)) bareAnchors.add(anchorToken);
 
     if (candidates.length >= 3) break;
-  }
-
-  if (candidates.isEmpty) {
-    // 앵커를 제목에서 못 찾으면 첫 번째 앵커를 그냥 사용
-    candidates.add(anchors.first);
   }
 
   // 브랜드 + 첫 번째 키워드를 맨 앞에 추가
@@ -208,6 +227,21 @@ List<String> _buildAnchorKeywords(
     if (!candidates.contains(branded)) {
       candidates.insert(0, branded);
     }
+  } else if (effectiveBrand.isNotEmpty && bareAnchors.isNotEmpty) {
+    // 수식어가 전혀 없어도 브랜드 + 앵커 조합 생성
+    final branded = '$effectiveBrand ${bareAnchors.first}';
+    candidates.insert(0, branded);
+  }
+
+  // 단독 앵커는 맨 뒤에 추가 (수식어 포함 후보가 부족할 때만)
+  for (final bare in bareAnchors) {
+    if (candidates.length >= 3) break;
+    if (!candidates.contains(bare)) candidates.add(bare);
+  }
+
+  if (candidates.isEmpty) {
+    // 앵커를 제목에서 못 찾으면 첫 번째 앵커를 그냥 사용
+    candidates.add(anchors.first);
   }
 
   return candidates.take(3).toList();

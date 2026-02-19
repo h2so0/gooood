@@ -9,6 +9,7 @@ import '../../services/notification_service.dart';
 import 'notification_history_sheet.dart';
 import '../legal_screen.dart';
 import '../../widgets/coupang_banner.dart';
+import '../../widgets/screen_header.dart';
 import 'settings_widgets.dart';
 import 'viewed_products_sheet.dart';
 
@@ -30,36 +31,7 @@ class SettingsScreen extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 40),
         children: [
           // 헤더: 뒤로가기 + 제목
-          SizedBox(
-            height: 38,
-            child: Stack(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new,
-                          size: 16, color: t.textSecondary),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Text('설정',
-                      style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
+          ScreenHeader(theme: t, title: '설정'),
           const SizedBox(height: 16),
 
           const CoupangBanner(),
