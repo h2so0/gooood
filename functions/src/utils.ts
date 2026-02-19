@@ -21,6 +21,7 @@ import {
   mapToAppCategory,
   classifyWithGemini,
   classifySubCategoryWithGemini,
+  generateSearchKeywords,
 } from "./classify";
 
 // ── Pure utilities ──
@@ -95,13 +96,15 @@ export async function writeCache(docId: string, items: unknown[]): Promise<void>
 
 // ── Firestore product write + dedup + classify ──
 
-export async function writeProducts(
+function getDocId(p: ProductJson): string {
+  const rawId = extractRawId(p.id);
+  return sanitizeDocId(rawId ?? p.id);
+}
+
+function deduplicateAndFilter(
   products: ProductJson[],
   source: string
-): Promise<number> {
-  if (products.length === 0) return 0;
-
-  // rawId 기준 중복 제거 (높은 dropRate 우선)
+): ProductJson[] {
   const bestByRawId = new Map<string, ProductJson>();
   const noRawId: ProductJson[] = [];
 
@@ -117,22 +120,34 @@ export async function writeProducts(
     }
   }
 
-  const unique = [...bestByRawId.values(), ...noRawId];
-
-  // ── 기존 상품 Firestore 배치 조회 (AI 중복 호출 방지) ──
-  const db = admin.firestore();
-  const docIdMap = new Map<string, ProductJson>();
-  for (const p of unique) {
-    const rawId = extractRawId(p.id);
-    const docId = sanitizeDocId(rawId ?? p.id);
-    docIdMap.set(docId, p);
+  const now = Date.now();
+  const deduped = [...bestByRawId.values(), ...noRawId];
+  const unique = deduped.filter((p) => {
+    if (!p.saleEndDate) return true;
+    try { return new Date(p.saleEndDate).getTime() >= now; }
+    catch { return true; }
+  });
+  const expiredSkipped = deduped.length - unique.length;
+  if (expiredSkipped > 0) {
+    console.log(`[writeProducts] ${source}: skipped ${expiredSkipped} expired products`);
   }
+  return unique;
+}
 
-  const docRefs = [...docIdMap.keys()].map((id) =>
-    db.collection("products").doc(id)
-  );
+async function loadExistingData(
+  unique: ProductJson[],
+  db: FirebaseFirestore.Firestore
+): Promise<{
+  existingCategoryMap: Map<string, CategoryResult>;
+  existingKeywordsMap: Map<string, string[]>;
+}> {
+  const docIds = unique.map((p) => getDocId(p));
+  const docRefs = docIds.map((id) => db.collection("products").doc(id));
   const existingDocs = docRefs.length > 0 ? await db.getAll(...docRefs) : [];
+
   const existingCategoryMap = new Map<string, CategoryResult>();
+  const existingKeywordsMap = new Map<string, string[]>();
+
   for (const doc of existingDocs) {
     if (!doc.exists) continue;
     const data = doc.data()!;
@@ -144,18 +159,25 @@ export async function writeProducts(
         existingCategoryMap.set(doc.id, { category: cat, subCategory: sub });
       }
     }
+    const kws = data.searchKeywords;
+    if (Array.isArray(kws) && kws.length > 0) {
+      existingKeywordsMap.set(doc.id, kws);
+    }
   }
 
-  // ── 카테고리 분류 ──
+  return { existingCategoryMap, existingKeywordsMap };
+}
+
+async function classifyAll(
+  unique: ProductJson[],
+  existingCategoryMap: Map<string, CategoryResult>
+): Promise<Map<ProductJson, CategoryResult>> {
   const classifyResult = new Map<ProductJson, CategoryResult>();
   const needsFullAI: ProductJson[] = [];
   const needsSubAI: ProductJson[] = [];
 
   for (const p of unique) {
-    const rawId = extractRawId(p.id);
-    const docId = sanitizeDocId(rawId ?? p.id);
-
-    const cached = existingCategoryMap.get(docId);
+    const cached = existingCategoryMap.get(getDocId(p));
     if (cached) {
       classifyResult.set(p, cached);
       continue;
@@ -170,20 +192,16 @@ export async function writeProducts(
     }
   }
 
-  // 2단계: 대+중 카테고리 모두 필요한 상품 → Gemini 풀분류
   if (needsFullAI.length > 0) {
     for (let i = 0; i < needsFullAI.length; i += AI_FULL_BATCH) {
       const aiBatch = needsFullAI.slice(i, i + AI_FULL_BATCH);
       const titles = aiBatch.map((p) => p.title);
       const results = await classifyWithGemini(titles);
-      aiBatch.forEach((p, idx) => {
-        classifyResult.set(p, results[idx]);
-      });
+      aiBatch.forEach((p, idx) => classifyResult.set(p, results[idx]));
       if (i + AI_FULL_BATCH < needsFullAI.length) await sleep(DELAYS.AI_BATCH);
     }
   }
 
-  // 3단계: 대카테고리 확정된 상품 → Gemini 중카테고리만 분류
   if (needsSubAI.length > 0) {
     for (let i = 0; i < needsSubAI.length; i += AI_SUB_BATCH) {
       const aiBatch = needsSubAI.slice(i, i + AI_SUB_BATCH);
@@ -200,6 +218,57 @@ export async function writeProducts(
     }
   }
 
+  return classifyResult;
+}
+
+async function generateAllKeywords(
+  unique: ProductJson[],
+  existingKeywordsMap: Map<string, string[]>
+): Promise<Map<ProductJson, string[]>> {
+  const keywordsResult = new Map<ProductJson, string[]>();
+  const needsKeywords: ProductJson[] = [];
+
+  for (const p of unique) {
+    const cached = existingKeywordsMap.get(getDocId(p));
+    if (cached) {
+      keywordsResult.set(p, cached);
+    } else {
+      needsKeywords.push(p);
+    }
+  }
+
+  if (needsKeywords.length > 0) {
+    for (let i = 0; i < needsKeywords.length; i += AI_SUB_BATCH) {
+      const kwBatch = needsKeywords.slice(i, i + AI_SUB_BATCH);
+      const items = kwBatch.map((p) => ({
+        title: p.title,
+        brand: p.brand,
+        category1: p.category1,
+        category2: p.category2,
+        category3: p.category3,
+      }));
+      const kws = await generateSearchKeywords(items);
+      kwBatch.forEach((p, idx) => keywordsResult.set(p, kws[idx]));
+      if (i + AI_SUB_BATCH < needsKeywords.length) await sleep(DELAYS.AI_SUB_BATCH);
+    }
+  }
+
+  return keywordsResult;
+}
+
+export async function writeProducts(
+  products: ProductJson[],
+  source: string
+): Promise<number> {
+  if (products.length === 0) return 0;
+
+  const unique = deduplicateAndFilter(products, source);
+  const db = admin.firestore();
+
+  const { existingCategoryMap, existingKeywordsMap } = await loadExistingData(unique, db);
+  const classifyResult = await classifyAll(unique, existingCategoryMap);
+  const keywordsResult = await generateAllKeywords(unique, existingKeywordsMap);
+
   // ── Firestore 저장 ──
   let written = 0;
 
@@ -207,15 +276,16 @@ export async function writeProducts(
     const batch = db.batch();
 
     for (const p of chunk) {
-      const rawId = extractRawId(p.id);
-      const docId = sanitizeDocId(rawId ?? p.id);
+      const docId = getDocId(p);
       const ref = db.collection("products").doc(docId);
       const cr = classifyResult.get(p) || DEFAULT_CATEGORY_RESULT;
+      const kws = keywordsResult.get(p) || [];
 
       batch.set(ref, {
         ...p,
         category: cr.category,
         subCategory: cr.subCategory,
+        ...(kws.length > 0 ? { searchKeywords: kws } : {}),
         dropRate: dropRate(p),
         source,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -226,11 +296,30 @@ export async function writeProducts(
     written += chunk.length;
   }
 
+  const needsFullAI = unique.filter((p) => !existingCategoryMap.has(getDocId(p)) && !mapToAppCategory(p.category1, p.category2, p.category3));
+  const needsSubAI = unique.filter((p) => !existingCategoryMap.has(getDocId(p)) && mapToAppCategory(p.category1, p.category2, p.category3));
+  const needsKeywords = unique.filter((p) => !existingKeywordsMap.has(getDocId(p)));
   const skipped = unique.length - needsFullAI.length - needsSubAI.length;
   console.log(
-    `[writeProducts] ${source}: ${written} products (${needsFullAI.length} full-AI, ${needsSubAI.length} sub-AI, ${skipped} cached)`
+    `[writeProducts] ${source}: ${written} products (${needsFullAI.length} full-AI, ${needsSubAI.length} sub-AI, ${skipped} cached, ${needsKeywords.length} keywords-gen)`
   );
   return written;
+}
+
+export async function cleanupOldNotificationRecords(): Promise<void> {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const db = admin.firestore();
+  const oldSnap = await db
+    .collection("sent_notifications")
+    .where("timestamp", "<", cutoff)
+    .limit(100)
+    .get();
+  if (!oldSnap.empty) {
+    const batch = db.batch();
+    oldSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
 }
 
 export async function cleanupOldProducts(): Promise<number> {
@@ -241,6 +330,7 @@ export async function cleanupOldProducts(): Promise<number> {
   let totalDeleted = 0;
   const MAX_ROUNDS = 5;
 
+  // 1) updatedAt 기준 24시간 지난 상품 삭제
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const oldSnap = await db
       .collection("products")
@@ -258,8 +348,33 @@ export async function cleanupOldProducts(): Promise<number> {
     if (oldSnap.size < CLEANUP_BATCH_LIMIT) break;
   }
 
+  // 2) saleEndDate가 지난 상품 삭제
+  //    saleEndDate는 ISO 문자열. 범위 쿼리로 null은 자동 제외됨.
+  const nowIso = new Date().toISOString();
+  let expiredDeleted = 0;
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const expiredSnap = await db
+      .collection("products")
+      .where("saleEndDate", ">", "")
+      .where("saleEndDate", "<", nowIso)
+      .limit(CLEANUP_BATCH_LIMIT)
+      .get();
+
+    if (expiredSnap.empty) break;
+
+    const batch = db.batch();
+    expiredSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    expiredDeleted += expiredSnap.size;
+
+    if (expiredSnap.size < CLEANUP_BATCH_LIMIT) break;
+  }
+
+  totalDeleted += expiredDeleted;
+
   if (totalDeleted > 0) {
-    console.log(`[cleanup] Deleted ${totalDeleted} old products`);
+    console.log(`[cleanup] Deleted ${totalDeleted} products (${expiredDeleted} expired by saleEndDate)`);
   }
   return totalDeleted;
 }

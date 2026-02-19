@@ -10,6 +10,7 @@ import '../../widgets/deal_badge.dart';
 import '../../widgets/keyword_price_section.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../utils/formatters.dart';
+import '../../utils/unit_price_parser.dart';
 import 'hero_image_section.dart';
 import 'product_meta_section.dart';
 
@@ -34,7 +35,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   void initState() {
     super.initState();
     _initCountdown();
-    _keywords = extractKeywords(p);
+    _keywords = (p.searchKeywords != null && p.searchKeywords!.isNotEmpty)
+        ? p.searchKeywords!
+        : extractKeywords(p);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(viewedProductsProvider.notifier).add(p);
     });
@@ -66,7 +69,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     super.dispose();
   }
 
+  bool get _hasUnitPrice => parseUnitPrice(p.title, p.currentPrice) != null;
+
   bool get _hasMetaInfo =>
+      _hasUnitPrice ||
       p.reviewScore != null ||
       p.reviewCount != null ||
       p.purchaseCount != null ||
@@ -186,6 +192,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_hasUnitPrice) ...[
+                        UnitPriceRow(product: p, theme: t),
+                        const SizedBox(height: 16),
+                      ],
                       if (p.rank != null) ...[
                         RankRow(product: p, theme: t),
                         const SizedBox(height: 16),

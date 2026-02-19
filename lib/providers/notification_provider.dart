@@ -89,23 +89,21 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
     await prefs.setBool('noti_smartDigest', state.smartDigest);
   }
 
-  void toggleHotDeal() {
-    state = state.copyWith(hotDeal: !state.hotDeal);
+  void _toggle(
+    NotificationSettings Function(NotificationSettings) updater, {
+    bool syncTopics = false,
+  }) {
+    state = updater(state);
     _save();
-    _syncTopics();
+    syncTopics ? _syncTopics() : DeviceProfileSync().syncNow();
   }
 
-  void toggleSaleSoonEnd() {
-    state = state.copyWith(saleSoonEnd: !state.saleSoonEnd);
-    _save();
-    _syncTopics();
-  }
-
-  void toggleDailyBest() {
-    state = state.copyWith(dailyBest: !state.dailyBest);
-    _save();
-    _syncTopics();
-  }
+  void toggleHotDeal() => _toggle((s) => s.copyWith(hotDeal: !s.hotDeal), syncTopics: true);
+  void toggleSaleSoonEnd() => _toggle((s) => s.copyWith(saleSoonEnd: !s.saleSoonEnd), syncTopics: true);
+  void toggleDailyBest() => _toggle((s) => s.copyWith(dailyBest: !s.dailyBest), syncTopics: true);
+  void togglePriceDrop() => _toggle((s) => s.copyWith(priceDrop: !s.priceDrop));
+  void toggleCategoryAlert() => _toggle((s) => s.copyWith(categoryAlert: !s.categoryAlert));
+  void toggleSmartDigest() => _toggle((s) => s.copyWith(smartDigest: !s.smartDigest));
 
   void toggleCategory(String category) {
     final cats = Set<String>.from(state.categories);
@@ -117,24 +115,6 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
     state = state.copyWith(categories: cats);
     _save();
     _syncTopics();
-  }
-
-  void togglePriceDrop() {
-    state = state.copyWith(priceDrop: !state.priceDrop);
-    _save();
-    DeviceProfileSync().syncNow();
-  }
-
-  void toggleCategoryAlert() {
-    state = state.copyWith(categoryAlert: !state.categoryAlert);
-    _save();
-    DeviceProfileSync().syncNow();
-  }
-
-  void toggleSmartDigest() {
-    state = state.copyWith(smartDigest: !state.smartDigest);
-    _save();
-    DeviceProfileSync().syncNow();
   }
 
   /// 최초 알림 허용 시 전체 알림 ON

@@ -23,6 +23,7 @@ export interface ProductJson {
   isDeliveryFree: boolean;
   isArrivalGuarantee: boolean;
   saleEndDate: string | null;
+  searchKeywords?: string[];
 }
 
 export interface KeywordJson {

@@ -19,6 +19,7 @@ import {
   writeProducts,
   writeCache,
   cleanupOldProducts,
+  cleanupOldNotificationRecords,
 } from "./utils";
 import { backfillSubCategories } from "./classify";
 import {
@@ -169,19 +170,7 @@ export const syncDeals = onSchedule(
     );
 
     // ④ 오래된 발송 기록 정리 (7일 이상)
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
-    const db = admin.firestore();
-    const oldSnap = await db
-      .collection("sent_notifications")
-      .where("timestamp", "<", cutoff)
-      .limit(100)
-      .get();
-    if (!oldSnap.empty) {
-      const batch = db.batch();
-      oldSnap.docs.forEach((d) => batch.delete(d.ref));
-      await batch.commit();
-    }
+    await cleanupOldNotificationRecords();
 
     await cleanupOldProducts();
     await checkPriceDrops();
@@ -285,6 +274,12 @@ export const syncPromotions = onSchedule(
   }
 );
 
+const EXTERNAL_SOURCES = [
+  { name: "11stDeals", fn: fetch11stDeals, source: "11st" },
+  { name: "gmarketDeals", fn: fetchGmarketDeals, source: "gmarket" },
+  { name: "auctionDeals", fn: fetchAuctionDeals, source: "auction" },
+] as const;
+
 export const syncExternalDeals = onSchedule(
   {
     schedule: "every 15 minutes",
@@ -294,28 +289,16 @@ export const syncExternalDeals = onSchedule(
     secrets: ["GEMINI_API_KEY"],
   },
   async () => {
-    try {
-      const st = await fetch11stDeals();
-      await writeProducts(st, "11st");
-      console.log(`Synced 11stDeals: ${st.length}`);
-    } catch (e) {
-      console.error("Failed 11stDeals:", e);
-    }
-    await sleep(DELAYS.EXTERNAL_BETWEEN);
-    try {
-      const gm = await fetchGmarketDeals();
-      await writeProducts(gm, "gmarket");
-      console.log(`Synced gmarketDeals: ${gm.length}`);
-    } catch (e) {
-      console.error("Failed gmarketDeals:", e);
-    }
-    await sleep(DELAYS.EXTERNAL_BETWEEN);
-    try {
-      const au = await fetchAuctionDeals();
-      await writeProducts(au, "auction");
-      console.log(`Synced auctionDeals: ${au.length}`);
-    } catch (e) {
-      console.error("Failed auctionDeals:", e);
+    for (let i = 0; i < EXTERNAL_SOURCES.length; i++) {
+      const { name, fn, source } = EXTERNAL_SOURCES[i];
+      try {
+        const products = await fn();
+        await writeProducts(products, source);
+        console.log(`Synced ${name}: ${products.length}`);
+      } catch (e) {
+        console.error(`Failed ${name}:`, e);
+      }
+      if (i < EXTERNAL_SOURCES.length - 1) await sleep(DELAYS.EXTERNAL_BETWEEN);
     }
   }
 );

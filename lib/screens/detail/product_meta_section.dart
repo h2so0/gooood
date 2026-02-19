@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../utils/unit_price_parser.dart';
 
 class RankRow extends StatelessWidget {
   final Product product;
@@ -202,6 +203,42 @@ class CountdownRow extends StatelessWidget {
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class UnitPriceRow extends StatelessWidget {
+  final Product product;
+  final TteolgaTheme theme;
+  const UnitPriceRow({super.key, required this.product, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final info = parseUnitPrice(product.title, product.currentPrice);
+    if (info == null) return const SizedBox.shrink();
+
+    final t = theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.straighten, size: 16, color: t.textSecondary),
+          const SizedBox(width: 8),
+          Text(
+            '${info.unitLabel} ${formatPrice(info.pricePerUnit.round())}',
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

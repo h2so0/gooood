@@ -13,6 +13,36 @@ import {
 import { AI_FULL_BATCH, DELAYS } from "./config";
 import { sleep } from "./utils";
 
+async function callGemini<T>(prompt: string, logTag: string): Promise<T | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    console.error(`[${logTag}] Gemini API ${res.status}: ${await res.text()}`);
+    return null;
+  }
+
+  const data = (await res.json()) as any;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return JSON.parse(text) as T;
+}
+
 export function mapToAppCategory(
   cat1: string,
   cat2?: string | null,
@@ -116,10 +146,7 @@ export function fixClassification(
 export async function classifySubCategoryWithGemini(
   items: { title: string; category: string }[]
 ): Promise<string[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return items.map((it) => SUB_CATEGORIES[it.category]?.[0] ?? "");
-  }
+  const fallback = () => items.map((it) => SUB_CATEGORIES[it.category]?.[0] ?? "");
 
   const subCatList = Object.entries(SUB_CATEGORIES)
     .map(([cat, subs]) => `${cat}: ${subs.join(", ")}`)
@@ -162,51 +189,29 @@ ${items.map((it, i) => `${i + 1}. [${it.category}] ${it.title}`).join("\n")}
 JSON 문자열 배열 ${items.length}개만 출력: ["중카테고리1", "중카테고리2", ...]`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 8192,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      console.error(`[classifySub] Gemini API ${res.status}: ${await res.text()}`);
-      return items.map((it) => SUB_CATEGORIES[it.category]?.[0] ?? "");
-    }
-
-    const data = (await res.json()) as any;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const parsed = JSON.parse(text);
+    const parsed = await callGemini<string[]>(prompt, "classifySub");
     const subs: string[] = Array.isArray(parsed) ? parsed : [];
+    if (subs.length === 0) return fallback();
 
     return items.map((it, i) => {
       const sub = subs[i];
       const validSubs = SUB_CATEGORIES[it.category] || [];
       const subCat = validSubs.includes(sub) ? sub : validSubs[0] || "";
-      // 제목 키워드로 오분류 교정
       const fixed = fixClassification(it.title, { category: it.category, subCategory: subCat });
       return fixed.subCategory;
     });
   } catch (e) {
     console.error("[classifySub] Gemini error:", e);
-    return items.map((it) => SUB_CATEGORIES[it.category]?.[0] ?? "");
+    return fallback();
   }
 }
 
 export async function classifyWithGemini(titles: string[]): Promise<CategoryResult[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const fallback = () => titles.map(() => ({ ...DEFAULT_CATEGORY_RESULT }));
+
+  if (!process.env.GEMINI_API_KEY) {
     console.warn("[classify] GEMINI_API_KEY not set, defaulting to 생활/건강");
-    return titles.map(() => ({ ...DEFAULT_CATEGORY_RESULT }));
+    return fallback();
   }
 
   const subCatList = Object.entries(SUB_CATEGORIES)
@@ -256,32 +261,9 @@ ${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}
 JSON 배열 ${titles.length}개만 출력: [{"category":"대카테고리","subCategory":"중카테고리"}, ...]`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 8192,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      console.error(`[classify] Gemini API ${res.status}: ${await res.text()}`);
-      return titles.map(() => ({ ...DEFAULT_CATEGORY_RESULT }));
-    }
-
-    const data = (await res.json()) as any;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    const parsed = JSON.parse(text);
+    const parsed = await callGemini<CategoryResult[]>(prompt, "classify");
     const results: CategoryResult[] = Array.isArray(parsed) ? parsed : [];
+    if (results.length === 0) return fallback();
 
     return titles.map((title, i) => {
       const r = results[i];
@@ -292,12 +274,57 @@ JSON 배열 ${titles.length}개만 출력: [{"category":"대카테고리","subCa
       const subCategory = validSubs.includes(r.subCategory)
         ? r.subCategory
         : validSubs[0] || "";
-      // 제목 키워드로 오분류 교정
       return fixClassification(title, { category: r.category, subCategory });
     });
   } catch (e) {
     console.error("[classify] Gemini error:", e);
-    return titles.map(() => ({ ...DEFAULT_CATEGORY_RESULT }));
+    return fallback();
+  }
+}
+
+export async function generateSearchKeywords(
+  items: { title: string; brand: string | null; category1: string; category2: string | null; category3: string | null }[]
+): Promise<string[][]> {
+  const fallback = () => items.map(() => []);
+
+  if (!process.env.GEMINI_API_KEY) return fallback();
+
+  const prompt = `당신은 한국 쇼핑 가격 비교 전문가입니다.
+각 상품에 대해 네이버 쇼핑에서 가격 비교를 위한 검색 키워드 1~3개를 생성하세요.
+
+규칙:
+- 실제 사람이 검색할 법한 자연스러운 검색어
+- 구체적인 것 → 넓은 것 순서
+- 제외: 수량(100개,3kg), 색상, 성별(남자/여자), 마케팅 문구
+- 상품의 핵심 정체성을 담은 키워드만
+
+예시:
+{title:"삼성전자 갤럭시 버즈3 프로 무선 이어폰 노이즈캔슬링", brand:"삼성전자", category3:"이어폰"}
+→ ["갤럭시 버즈3 프로", "갤럭시 버즈3", "무선 이어폰"]
+
+{title:"남자 긴팔 티셔츠 무지티 쪽티 면티 흰티 러닝 30수", brand:"에이커즈", category3:"티셔츠"}
+→ ["긴팔 티셔츠", "티셔츠"]
+
+{title:"코카콜라 350ml 6캔", brand:"코카콜라", category3:"탄산음료"}
+→ ["코카콜라"]
+
+상품:
+${items.map((it, i) => `${i + 1}. {title:"${it.title}", brand:"${it.brand ?? ""}", category3:"${it.category3 ?? ""}"}`).join("\n")}
+
+JSON 배열의 배열로 응답: [["키워드1","키워드2"], ["키워드1"], ...]`;
+
+  try {
+    const parsed = await callGemini<string[][]>(prompt, "searchKeywords");
+    if (!Array.isArray(parsed)) return fallback();
+
+    return items.map((_, i) => {
+      const kws = parsed[i];
+      if (!Array.isArray(kws)) return [];
+      return kws.filter((k: any) => typeof k === "string" && k.length > 0).slice(0, 3);
+    });
+  } catch (e) {
+    console.error("[searchKeywords] Gemini error:", e);
+    return fallback();
   }
 }
 

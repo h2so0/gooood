@@ -20,6 +20,7 @@ class Product {
   final bool isDeliveryFree;
   final bool isArrivalGuarantee;
   final String? saleEndDate;
+  final List<String>? searchKeywords;
 
   Product({
     required this.id,
@@ -43,6 +44,7 @@ class Product {
     this.isDeliveryFree = false,
     this.isArrivalGuarantee = false,
     this.saleEndDate,
+    this.searchKeywords,
   });
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +69,7 @@ class Product {
     'isDeliveryFree': isDeliveryFree,
     'isArrivalGuarantee': isArrivalGuarantee,
     'saleEndDate': saleEndDate,
+    'searchKeywords': searchKeywords,
   };
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -91,6 +94,9 @@ class Product {
     isDeliveryFree: json['isDeliveryFree'] == true,
     isArrivalGuarantee: json['isArrivalGuarantee'] == true,
     saleEndDate: json['saleEndDate']?.toString(),
+    searchKeywords: (json['searchKeywords'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .toList(),
   );
 
   Product copyWith({
@@ -115,6 +121,7 @@ class Product {
     bool? isDeliveryFree,
     bool? isArrivalGuarantee,
     String? saleEndDate,
+    List<String>? searchKeywords,
   }) {
     return Product(
       id: id ?? this.id,
@@ -138,6 +145,7 @@ class Product {
       isDeliveryFree: isDeliveryFree ?? this.isDeliveryFree,
       isArrivalGuarantee: isArrivalGuarantee ?? this.isArrivalGuarantee,
       saleEndDate: saleEndDate ?? this.saleEndDate,
+      searchKeywords: searchKeywords ?? this.searchKeywords,
     );
   }
 

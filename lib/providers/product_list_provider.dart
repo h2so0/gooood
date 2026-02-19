@@ -90,9 +90,15 @@ abstract class PaginatedProductsNotifier
       }
 
       final snapshot = await query.get();
-      final page = snapshot.docs.map((doc) {
-        return Product.fromJson(doc.data() as Map<String, dynamic>);
-      }).toList();
+      final now = DateTime.now();
+      final page = snapshot.docs
+          .map((doc) => Product.fromJson(doc.data() as Map<String, dynamic>))
+          .where((p) {
+            if (p.saleEndDate == null) return true;
+            try { return DateTime.parse(p.saleEndDate!).isAfter(now); }
+            catch (_) { return true; }
+          })
+          .toList();
 
       if (page.isEmpty && state.products.isEmpty) {
         await onEmptyFirstPage();
