@@ -4,6 +4,7 @@ import '../../models/keyword_price_data.dart';
 import '../../models/keyword_wishlist.dart';
 import '../../providers/keyword_price_provider.dart';
 import '../../providers/keyword_wishlist_provider.dart';
+import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../detail/product_detail_screen.dart';
@@ -180,6 +181,7 @@ class _WishlistCard extends ConsumerWidget {
               }),
               const Spacer(),
               _actionButton(t, Icons.delete_outline, '삭제', () {
+                AnalyticsService.logKeywordWishlistRemove(item.keyword);
                 ref
                     .read(keywordWishlistProvider.notifier)
                     .remove(item.keyword);

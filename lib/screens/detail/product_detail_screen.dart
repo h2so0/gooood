@@ -9,6 +9,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/deal_badge.dart';
 import '../../widgets/keyword_price_section.dart';
 import '../../providers/viewed_products_provider.dart';
+import '../../services/analytics_service.dart';
+import '../../services/review_service.dart';
 import '../../utils/formatters.dart';
 import '../../utils/unit_price_parser.dart';
 import 'hero_image_section.dart';
@@ -40,6 +42,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         : extractKeywords(p);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(viewedProductsProvider.notifier).add(p);
+      AnalyticsService.logProductViewed(p);
+      ReviewService.recordProductView();
     });
   }
 
@@ -255,7 +259,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               product: p,
               theme: t,
               bottomPadding: bottomPadding,
-              onTap: () => launchProductUrl(p.link),
+              onTap: () {
+                AnalyticsService.logPurchaseIntent(p);
+                launchProductUrl(p.link);
+              },
             ),
           ),
         ],
@@ -336,6 +343,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   void _shareProduct() {
+    AnalyticsService.logProductShared(p);
     final encodedId = Uri.encodeComponent(p.id);
     final deepLink = 'https://gooddeal-app.web.app/product/$encodedId';
     SharePlus.instance.share(ShareParams(text: deepLink));

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../providers/keyword_wishlist_provider.dart';
+import '../../services/analytics_service.dart';
 
 class TargetPriceSheet extends ConsumerStatefulWidget {
   final String keyword;
@@ -207,6 +208,8 @@ class _TargetPriceSheetState extends ConsumerState<TargetPriceSheet> {
     final price = int.tryParse(text);
     if (price == null || price <= 0) return;
 
+    AnalyticsService.logTargetPriceSet(
+        widget.keyword, price, widget.currentMinPrice);
     ref
         .read(keywordWishlistProvider.notifier)
         .updateTargetPrice(widget.keyword, price);
@@ -214,6 +217,7 @@ class _TargetPriceSheetState extends ConsumerState<TargetPriceSheet> {
   }
 
   void _clear() {
+    AnalyticsService.logTargetPriceCleared(widget.keyword);
     ref
         .read(keywordWishlistProvider.notifier)
         .updateTargetPrice(widget.keyword, null);

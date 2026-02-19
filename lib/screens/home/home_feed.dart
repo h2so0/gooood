@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
 import '../../models/trend_data.dart';
+import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
@@ -189,7 +190,10 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
         final rank = offset + e.key + 1;
         final kw = e.value;
         return GestureDetector(
-          onTap: () => _navigateToSearch(kw.keyword),
+          onTap: () {
+            AnalyticsService.logTrendingKeywordTap(kw.keyword, rank: rank);
+            _navigateToSearch(kw.keyword);
+          },
           child: Container(
             color: Colors.transparent,
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -304,6 +308,8 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
       child: GestureDetector(
         onTap: () {
           if (keywords.isNotEmpty) {
+            AnalyticsService.logTrendingKeywordTap(
+                keywords.first.keyword, rank: 1);
             _navigateToSearch(keywords.first.keyword);
           }
         },
@@ -326,7 +332,12 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
               Expanded(
                 child: RollingKeywords(
                   keywords: keywords,
-                  onTap: _navigateToSearch,
+                  onTap: (keyword) {
+                    final idx = keywords.indexWhere((k) => k.keyword == keyword);
+                    AnalyticsService.logTrendingKeywordTap(
+                        keyword, rank: idx + 1);
+                    _navigateToSearch(keyword);
+                  },
                 ),
               ),
               GestureDetector(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../models/product.dart';
+import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../providers/product_list_provider.dart';
 import '../widgets/product_card.dart';
@@ -109,6 +110,8 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                           setState(() {
                             _selectedSubCategory = isAll ? null : label;
                           });
+                          AnalyticsService.logSubCategoryFilter(
+                              widget.category, isAll ? null : label);
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),

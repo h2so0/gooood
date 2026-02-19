@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../providers/notification_provider.dart';
@@ -234,6 +235,7 @@ class SettingsScreen extends ConsumerWidget {
     // 꺼져있던 걸 켜는 건 바로 실행
     if (!currentValue) {
       toggle();
+      AnalyticsService.logNotificationToggle(label, true);
       return;
     }
 
@@ -264,6 +266,7 @@ class SettingsScreen extends ConsumerWidget {
           TextButton(
             onPressed: () {
               toggle();
+              AnalyticsService.logNotificationToggle(label, false);
               Navigator.of(ctx).pop();
             },
             child: const Text('끄기',

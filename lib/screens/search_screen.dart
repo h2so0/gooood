@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 import '../widgets/keyword_price_section.dart';
@@ -45,13 +46,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _onChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      setState(() => _query = value.trim());
+      final trimmed = value.trim();
+      setState(() => _query = trimmed);
+      if (trimmed.isNotEmpty) AnalyticsService.logSearch(trimmed);
     });
   }
 
   void _search(String keyword) {
     _controller.text = keyword;
     setState(() => _query = keyword);
+    AnalyticsService.logSearch(keyword);
   }
 
   @override

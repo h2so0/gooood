@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/notification_provider.dart';
 import '../../services/device_profile_sync.dart';
@@ -90,6 +91,9 @@ class ThemeToggleRow extends ConsumerWidget {
                 inactiveTrackColor: t.border,
                 onChanged: (_) {
                   ref.read(themeModeProvider.notifier).toggle();
+                  final newIsDark = !isDark;
+                  AnalyticsService.logThemeToggle(newIsDark);
+                  AnalyticsService.setThemeProperty(newIsDark);
                 },
               )),
         ],

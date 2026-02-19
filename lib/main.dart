@@ -13,6 +13,7 @@ import 'models/product.dart';
 import 'providers/notification_provider.dart';
 import 'providers/keyword_wishlist_provider.dart';
 import 'providers/keyword_price_provider.dart';
+import 'services/analytics_service.dart';
 import 'services/notification_service.dart';
 import 'services/device_profile_sync.dart';
 import 'theme/app_theme.dart';
@@ -74,6 +75,10 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
       await notiService.subscribeInitialTopics();
 
       await deviceFuture;
+
+      // 초기 user property 설정
+      final isDark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+      AnalyticsService.setThemeProperty(isDark);
     } catch (e) {
       debugPrint('[Init] Service initialization error: $e');
     }
@@ -141,14 +146,16 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
     if (segments.length >= 2 && segments[0] == 'product') {
       final productId = segments[1];
       if (productId.isNotEmpty) {
+        AnalyticsService.logDeepLinkOpened(productId);
         _navigateToProduct(productId);
       }
     }
   }
 
   void _handleNotificationTap(Map<String, dynamic> data) {
-    // 키워드 알림 처리: payload가 "keyword:검색어" 형태
     final productId = data['productId'] as String?;
+    AnalyticsService.logNotificationTap(productId);
+    // 키워드 알림 처리: payload가 "keyword:검색어" 형태
     if (productId != null && productId.startsWith('keyword:')) {
       final keyword = productId.substring(8);
       if (keyword.isNotEmpty) {

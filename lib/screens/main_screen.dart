@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
 import '../providers/keyword_wishlist_provider.dart';
@@ -181,10 +182,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() {
-                      _tabIndex = i;
-                      _visitedTabs.add(i);
-                    }),
+                    onTap: () {
+                      setState(() {
+                        _tabIndex = i;
+                        _visitedTabs.add(i);
+                      });
+                      AnalyticsService.logCategoryChanged(_tabs[i]);
+                    },
                     child: Container(
                       padding:
                           const EdgeInsets.symmetric(horizontal: 16),

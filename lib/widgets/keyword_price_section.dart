@@ -5,6 +5,7 @@ import '../models/keyword_price_data.dart';
 import '../models/product.dart';
 import '../providers/keyword_price_provider.dart';
 import '../providers/keyword_wishlist_provider.dart';
+import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../screens/detail/product_detail_screen.dart';
 import '../screens/search_screen.dart';
@@ -408,8 +409,10 @@ class _WishlistButton extends ConsumerWidget {
     return GestureDetector(
       onTap: () {
         if (isWishlisted) {
+          AnalyticsService.logKeywordWishlistRemove(keyword);
           ref.read(keywordWishlistProvider.notifier).remove(keyword);
         } else {
+          AnalyticsService.logKeywordWishlistAdd(keyword);
           ref.read(keywordWishlistProvider.notifier).add(keyword);
         }
       },
