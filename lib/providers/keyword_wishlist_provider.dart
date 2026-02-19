@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../constants/app_constants.dart';
 import '../models/keyword_wishlist.dart';
+import '../services/device_profile_sync.dart';
 import '../services/keyword_price_tracker.dart';
 import 'keyword_price_provider.dart';
 
@@ -46,6 +47,7 @@ class KeywordWishlistNotifier extends StateNotifier<List<KeywordWishItem>> {
 
     state = [item, ...state];
     await _save();
+    DeviceProfileSync().scheduleSync();
 
     try {
       await _tracker.incrementTracker(keyword);
@@ -59,6 +61,7 @@ class KeywordWishlistNotifier extends StateNotifier<List<KeywordWishItem>> {
   Future<void> remove(String keyword) async {
     state = state.where((i) => i.keyword != keyword).toList();
     await _save();
+    DeviceProfileSync().scheduleSync();
 
     try {
       await _tracker.decrementTracker(keyword);
@@ -78,6 +81,7 @@ class KeywordWishlistNotifier extends StateNotifier<List<KeywordWishItem>> {
       return item;
     }).toList();
     await _save();
+    DeviceProfileSync().scheduleSync();
   }
 
   Future<void> _save() async {

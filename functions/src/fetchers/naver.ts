@@ -4,7 +4,7 @@
 
 import fetch from "node-fetch";
 import { ProductJson, KeywordJson, PopularKeywordJson } from "../types";
-import { COMMON_HEADERS, DELAYS } from "../config";
+import { COMMON_HEADERS, SNXBEST_HEADERS, DELAYS } from "../config";
 import { sleep, extractNextData, sortByDropRate } from "../utils";
 
 // ── Shared waffle parser ──
@@ -109,14 +109,7 @@ export async function fetchBest100(
 ): Promise<ProductJson[]> {
   const res = await fetch(
     `https://snxbest.naver.com/api/v1/snxbest/product/rank?ageType=ALL&categoryId=${categoryId}&sortType=${sortType}&periodType=DAILY`,
-    {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        Accept: "application/json",
-        Referer: "https://snxbest.naver.com/home",
-      },
-    }
+    { headers: SNXBEST_HEADERS }
   );
   if (!res.ok) return [];
 
@@ -168,14 +161,7 @@ export async function fetchBest100(
 export async function fetchKeywordRank(): Promise<KeywordJson[]> {
   const res = await fetch(
     "https://snxbest.naver.com/api/v1/snxbest/keyword/rank?ageType=ALL&categoryId=A&sortType=KEYWORD_NEW&periodType=WEEKLY",
-    {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        Accept: "application/json",
-        Referer: "https://snxbest.naver.com/home",
-      },
-    }
+    { headers: SNXBEST_HEADERS }
   );
   if (!res.ok) return [];
 

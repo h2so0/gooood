@@ -1,3 +1,16 @@
+/// 네이버 쇼핑 카테고리 코드 (단일 소스)
+const shoppingCategoryIds = <String, String>{
+  '디지털/가전': '50000003',
+  '패션의류': '50000000',
+  '화장품/미용': '50000002',
+  '생활/건강': '50000008',
+  '식품': '50000006',
+  '스포츠/레저': '50000007',
+  '출산/육아': '50000005',
+  '패션잡화': '50000001',
+  '가구/인테리어': '50000004',
+};
+
 /// Firestore cache document IDs
 class CacheKeys {
   static const keywordRank = 'keywordRank';

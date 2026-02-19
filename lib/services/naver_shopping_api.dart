@@ -17,18 +17,8 @@ class NaverShoppingApi {
   static const _insightUrl =
       'https://datalab.naver.com/shoppingInsight/getKeywordRank.naver';
 
-  /// 네이버 쇼핑 카테고리 코드
-  static const shoppingCategories = {
-    '디지털/가전': '50000003',
-    '패션의류': '50000000',
-    '화장품/미용': '50000002',
-    '생활/건강': '50000008',
-    '식품': '50000006',
-    '스포츠/레저': '50000007',
-    '출산/육아': '50000005',
-    '패션잡화': '50000001',
-    '가구/인테리어': '50000004',
-  };
+  /// 네이버 쇼핑 카테고리 코드 (app_constants.dart의 단일 소스 참조)
+  static const shoppingCategories = shoppingCategoryIds;
 
   final http.Client _client;
   final MemoryCache _cache = MemoryCache();

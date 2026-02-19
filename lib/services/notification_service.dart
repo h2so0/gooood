@@ -7,6 +7,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../constants/app_constants.dart';
+
 // ──────────────────────────────────────────
 // 백그라운드 FCM 메시지 핸들러 (top-level)
 // ──────────────────────────────────────────
@@ -61,17 +63,7 @@ class FcmTopics {
   static String hotDealCategory(String categoryId) =>
       'hotDeal_$categoryId';
 
-  static const categoryIds = {
-    '디지털/가전': '50000003',
-    '패션의류': '50000000',
-    '화장품/미용': '50000002',
-    '생활/건강': '50000008',
-    '식품': '50000006',
-    '스포츠/레저': '50000007',
-    '출산/육아': '50000005',
-    '패션잡화': '50000001',
-    '가구/인테리어': '50000004',
-  };
+  static const categoryIds = shoppingCategoryIds;
 }
 
 // ──────────────────────────────────────────

@@ -30,6 +30,13 @@ export const COMMON_HEADERS = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 };
 
+export const SNXBEST_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  Accept: "application/json",
+  Referer: "https://snxbest.naver.com/home",
+};
+
 export const GIANEX_API_BASE = "https://elsa-fe.gmarket.co.kr/n/home/api/page";
 
 // ── Magic number constants ──
@@ -45,6 +52,7 @@ export const RATE_LIMIT = {
   SMART_DIGEST: 86_400_000,    // 1 day
   HOT_DEAL: 3_600_000,         // 1 hour
   SALE_END: 3_600_000,         // 1 hour
+  KEYWORD_ALERT: 21_600_000,   // 6 hours
 } as const;
 
 export const DELAYS = {

@@ -7,6 +7,12 @@ import { ProductJson } from "../types";
 import { COMMON_HEADERS, GIANEX_API_BASE, DELAYS } from "../config";
 import { sleep, sortByDropRate } from "../utils";
 
+function normalizeImageUrl(url: string): string {
+  let imgUrl = url;
+  if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+  return imgUrl.replace(/resize\/\d+x\d+/, "resize/800x800");
+}
+
 export async function fetch11stDeals(): Promise<ProductJson[]> {
   const res = await fetch(
     "https://apis.11st.co.kr/pui/v2/page?pageId=PCHOMEHOME",
@@ -44,9 +50,7 @@ export async function fetch11stDeals(): Promise<ProductJson[]> {
 
         if (currentPrice <= 0) continue;
 
-        let imgUrl = item.imageUrl1 || "";
-        if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
-        imgUrl = imgUrl.replace(/resize\/\d+x\d+/, "resize/800x800");
+        const imgUrl = normalizeImageUrl(item.imageUrl1 || "");
 
         products.push({
           id: `11st_${prdNo}`,
@@ -107,9 +111,7 @@ export function parseGianexItems(
         const discRate = Number(item.discountRate) || 0;
         if (salePrice <= 0) continue;
 
-        let imgUrl = item.imageUrl || "";
-        if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
-        imgUrl = imgUrl.replace(/resize\/\d+x\d+/, "resize/800x800");
+        const imgUrl = normalizeImageUrl(item.imageUrl || "");
 
         let link: string;
         if (source === "gmkt") {

@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/app_constants.dart';
+import '../models/keyword_wishlist.dart';
 import '../providers/viewed_products_provider.dart';
 
 class DeviceProfileSync {
@@ -21,6 +23,7 @@ class DeviceProfileSync {
   static const _maxWatchedProducts = 30;
   static const _lastSyncKey = 'device_profile_last_sync';
   static const _viewedBoxName = 'viewed_products';
+  static const _keywordWishlistBoxName = HiveBoxes.keywordWishlist;
 
   final _messaging = FirebaseMessaging.instance;
   final _db = FirebaseFirestore.instance;
@@ -136,6 +139,17 @@ class DeviceProfileSync {
         }
       }
 
+      // Keyword wishlist
+      final keywordWishItems = await _loadKeywordWishlist();
+      final keywordWishlist = keywordWishItems
+          .where((item) => item.targetPrice != null)
+          .map((item) => <String, dynamic>{
+                'keyword': item.keyword,
+                'targetPrice': item.targetPrice,
+                'category': item.category,
+              })
+          .toList();
+
       // Notification settings
       final enablePriceDrop = prefs.getBool('noti_priceDrop') ?? true;
       final enableCategoryAlert = prefs.getBool('noti_categoryAlert') ?? true;
@@ -151,6 +165,7 @@ class DeviceProfileSync {
         'categoryScores': categoryScores,
         'subCategoryScores': subCategoryScores,
         'priceSnapshots': priceSnapshots,
+        'keywordWishlist': keywordWishlist,
         'enablePriceDrop': enablePriceDrop,
         'enableCategoryAlert': enableCategoryAlert,
         'enableSmartDigest': enableSmartDigest,
@@ -223,6 +238,32 @@ class DeviceProfileSync {
       return _loadViewedEntriesSync();
     } catch (e) {
       debugPrint('[DeviceProfileSync] loadViewedEntries error: $e');
+      return [];
+    }
+  }
+
+  Future<List<KeywordWishItem>> _loadKeywordWishlist() async {
+    try {
+      final boxName = _keywordWishlistBoxName;
+      if (!Hive.isBoxOpen(boxName)) {
+        await Hive.openBox<String>(boxName);
+      }
+      final box = Hive.box<String>(boxName);
+      final items = <KeywordWishItem>[];
+      for (final key in box.keys) {
+        try {
+          final raw = box.get(key);
+          if (raw != null) {
+            items.add(KeywordWishItem.fromJson(
+                jsonDecode(raw) as Map<String, dynamic>));
+          }
+        } catch (e) {
+          debugPrint('[DeviceProfileSync] parse keyword wishlist error: $e');
+        }
+      }
+      return items;
+    } catch (e) {
+      debugPrint('[DeviceProfileSync] loadKeywordWishlist error: $e');
       return [];
     }
   }

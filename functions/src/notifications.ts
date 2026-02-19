@@ -4,14 +4,15 @@
 
 import * as admin from "firebase-admin";
 import fetch from "node-fetch";
-import { ProductJson } from "./types";
 import {
   NAVER_CLIENT_ID,
   NAVER_CLIENT_SECRET,
   NAVER_SHOP_URL,
   CATEGORY_MAP,
+  RATE_LIMIT,
+  DELAYS,
 } from "./config";
-import { dropRate, extractRawId, sanitizeDocId } from "./utils";
+import { dropRate, extractRawId, sanitizeDocId, sleep } from "./utils";
 
 // ── Quiet hour & FCM helpers ──
 
@@ -22,6 +23,29 @@ export function isQuietHour(quietStart: number, quietEnd: number): boolean {
     return kstHour >= quietStart && kstHour < quietEnd;
   }
   return kstHour >= quietStart || kstHour < quietEnd;
+}
+
+function buildFcmPayload(
+  title: string,
+  body: string,
+  type: string,
+  channelId: string,
+  productId?: string
+) {
+  return {
+    notification: { title, body },
+    data: {
+      type,
+      ...(productId ? { productId } : {}),
+    },
+    android: {
+      priority: "high" as const,
+      notification: { channelId },
+    },
+    apns: {
+      payload: { aps: { sound: "default" } },
+    },
+  };
 }
 
 export async function sendToDevice(
@@ -35,18 +59,7 @@ export async function sendToDevice(
   try {
     await admin.messaging().send({
       token,
-      notification: { title, body },
-      data: {
-        type,
-        ...(productId ? { productId } : {}),
-      },
-      android: {
-        priority: "high",
-        notification: { channelId: "personalized" },
-      },
-      apns: {
-        payload: { aps: { sound: "default" } },
-      },
+      ...buildFcmPayload(title, body, type, "personalized", productId),
     });
     return true;
   } catch (e: any) {
@@ -69,6 +82,11 @@ export async function sendToDevice(
   }
 }
 
+const TOPIC_CHANNEL_MAP: Record<string, string> = {
+  hotDeal: "hot_deal",
+  saleEnd: "sale_end",
+};
+
 export async function sendToTopic(
   topic: string,
   title: string,
@@ -77,27 +95,10 @@ export async function sendToTopic(
   productId?: string
 ): Promise<void> {
   try {
+    const channelId = TOPIC_CHANNEL_MAP[type] || "daily_best";
     await admin.messaging().send({
       topic,
-      notification: { title, body },
-      data: {
-        type,
-        ...(productId ? { productId } : {}),
-      },
-      android: {
-        priority: "high",
-        notification: {
-          channelId:
-            type === "hotDeal"
-              ? "hot_deal"
-              : type === "saleEnd"
-                ? "sale_end"
-                : "daily_best",
-        },
-      },
-      apns: {
-        payload: { aps: { sound: "default" } },
-      },
+      ...buildFcmPayload(title, body, type, channelId, productId),
     });
   } catch (e) {
     console.error(`FCM send failed for topic ${topic}:`, e);
@@ -261,5 +262,161 @@ export async function checkPriceDrops(): Promise<void> {
 
   if (sentCount > 0) {
     console.log(`[checkPriceDrops] sent ${sentCount} price drop alerts`);
+  }
+}
+
+// ── Keyword price alerts ──
+
+interface KeywordWishItem {
+  keyword: string;
+  targetPrice: number;
+  category?: string;
+}
+
+interface KeywordSearchResult {
+  lowestPrice: number;
+  title: string;
+  productId: string;
+}
+
+async function searchNaverShopping(keyword: string): Promise<KeywordSearchResult | null> {
+  const url = `${NAVER_SHOP_URL}?query=${encodeURIComponent(keyword)}&display=20&sort=asc`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+      },
+    });
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as any;
+    const items = json.items ?? [];
+    if (items.length === 0) return null;
+
+    // Find the item with the lowest price (lprice)
+    let lowest = items[0];
+    for (const item of items) {
+      const price = Number(item.lprice);
+      if (price > 0 && price < Number(lowest.lprice)) {
+        lowest = item;
+      }
+    }
+
+    const lowestPrice = Number(lowest.lprice);
+    if (lowestPrice <= 0) return null;
+
+    return {
+      lowestPrice,
+      title: (lowest.title as string).replace(/<\/?b>/g, ""),
+      productId: lowest.productId as string,
+    };
+  } catch (e) {
+    console.error(`[searchNaverShopping] error for "${keyword}":`, e);
+    return null;
+  }
+}
+
+export async function checkKeywordPriceAlerts(): Promise<void> {
+  const db = admin.firestore();
+  const rateLimitCutoff = new Date(Date.now() - RATE_LIMIT.KEYWORD_ALERT);
+
+  // 1. Load all profiles with keywordWishlist
+  const profilesSnap = await db
+    .collection("device_profiles")
+    .where("enablePriceDrop", "==", true)
+    .get();
+
+  if (profilesSnap.empty) return;
+
+  // Filter profiles that have keywordWishlist with items
+  const profilesWithKeywords: {
+    doc: FirebaseFirestore.QueryDocumentSnapshot;
+    token: string;
+    tokenHash: string;
+    profile: FirebaseFirestore.DocumentData;
+    keywords: KeywordWishItem[];
+  }[] = [];
+
+  for (const profileDoc of profilesSnap.docs) {
+    const profile = profileDoc.data();
+    const wishlist = (profile.keywordWishlist || []) as KeywordWishItem[];
+    if (wishlist.length === 0) continue;
+
+    // Only items with targetPrice set
+    const withTarget = wishlist.filter((w) => w.targetPrice && w.targetPrice > 0);
+    if (withTarget.length === 0) continue;
+
+    // Rate limit check
+    const lastSent = profile.lastKeywordAlertSentAt?.toDate?.();
+    if (lastSent && lastSent > rateLimitCutoff) continue;
+
+    // Quiet hour check
+    if (isQuietHour(profile.quietStartHour ?? 22, profile.quietEndHour ?? 8)) continue;
+
+    profilesWithKeywords.push({
+      doc: profileDoc,
+      token: profile.fcmToken as string,
+      tokenHash: profile.tokenHash as string,
+      profile,
+      keywords: withTarget,
+    });
+  }
+
+  if (profilesWithKeywords.length === 0) return;
+
+  // 2. Collect unique keywords and search once per keyword (caching)
+  const keywordCache = new Map<string, KeywordSearchResult | null>();
+  const uniqueKeywords = new Set<string>();
+  for (const p of profilesWithKeywords) {
+    for (const kw of p.keywords) {
+      uniqueKeywords.add(kw.keyword);
+    }
+  }
+
+  for (const keyword of uniqueKeywords) {
+    const result = await searchNaverShopping(keyword);
+    keywordCache.set(keyword, result);
+    await sleep(DELAYS.FETCH_BETWEEN); // 300ms delay between API calls
+  }
+
+  // 3. Check each profile's keywords against cached results
+  let sentCount = 0;
+
+  for (const { doc: profileDoc, token, tokenHash, keywords } of profilesWithKeywords) {
+    for (const kw of keywords) {
+      const result = keywordCache.get(kw.keyword);
+      if (!result) continue;
+
+      if (result.lowestPrice <= kw.targetPrice) {
+        const priceFormatted = result.lowestPrice.toLocaleString();
+        const targetFormatted = kw.targetPrice.toLocaleString();
+        const title = `🎯 "${kw.keyword}" 목표가 도달!`;
+        const body = `${result.title}\n최저 ${priceFormatted}원 (목표 ${targetFormatted}원)`;
+
+        const sent = await sendToDevice(
+          token,
+          tokenHash,
+          title,
+          body,
+          "keywordPriceAlert",
+          `keyword:${kw.keyword}`
+        );
+
+        if (sent) {
+          await profileDoc.ref.update({
+            lastKeywordAlertSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastKeywordAlertKeyword: kw.keyword,
+          });
+          sentCount++;
+          break; // One alert per profile per cycle
+        }
+      }
+    }
+  }
+
+  if (sentCount > 0) {
+    console.log(`[checkKeywordPriceAlerts] sent ${sentCount} keyword price alerts`);
   }
 }

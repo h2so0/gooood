@@ -28,6 +28,7 @@ import {
   matchCategory,
   checkPriceDrops,
   loadEligibleProfiles,
+  checkKeywordPriceAlerts as checkKeywordPriceAlertsImpl,
 } from "./notifications";
 import {
   fetchTodayDeals,
@@ -45,6 +46,54 @@ import {
 import { refreshFeedData } from "./feed";
 
 admin.initializeApp();
+
+// ── Shared alert helper ──
+
+async function sendTimeBoundAlert(
+  candidates: ProductJson[],
+  type: string,
+  rateLimitMs: number,
+  formatTitle: (deal: ProductJson) => string,
+  extraTopics?: (deal: ProductJson, docId: string) => Promise<void>,
+): Promise<void> {
+  if (candidates.length === 0) return;
+
+  const db = admin.firestore();
+  const sentRef = db.collection("sent_notifications");
+
+  const recent = await sentRef
+    .where("type", "==", type)
+    .orderBy("timestamp", "desc")
+    .limit(1)
+    .get();
+  const lastTime = recent.docs[0]?.data()?.timestamp?.toDate?.();
+  if (lastTime && (Date.now() - lastTime.getTime()) < rateLimitMs) return;
+
+  const sentSnap = await sentRef
+    .where("type", "==", type)
+    .orderBy("timestamp", "desc")
+    .limit(200)
+    .get();
+  const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
+
+  for (const deal of candidates) {
+    if (sentIds.has(deal.id)) continue;
+
+    const title = formatTitle(deal);
+    const rawId = extractRawId(deal.id);
+    const docId = sanitizeDocId(rawId ?? deal.id);
+
+    await sendToTopic(type, title, deal.title, type, docId);
+    if (extraTopics) await extraTopics(deal, docId);
+
+    await sentRef.add({
+      productId: deal.id,
+      type,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    break;
+  }
+}
 
 // ──────────────────────────────────────────
 // SYNC_TASKS (manualSync에서 루프 처리)
@@ -86,57 +135,19 @@ export const syncDeals = onSchedule(
 
     // ② 핫딜 알림 (시간당 최대 1건)
     const hotDeals = products.filter((p) => dropRate(p) >= 30);
-    if (hotDeals.length > 0) {
-      const db = admin.firestore();
-      const sentRef = db.collection("sent_notifications");
-
-      const recentHot = await sentRef
-        .where("type", "==", "hotDeal")
-        .orderBy("timestamp", "desc")
-        .limit(1)
-        .get();
-      const lastHotTime = recentHot.docs[0]?.data()?.timestamp?.toDate?.();
-      const canSendHot = !lastHotTime || (Date.now() - lastHotTime.getTime()) >= RATE_LIMIT.HOT_DEAL;
-
-      if (canSendHot) {
-        const sentSnap = await sentRef
-          .where("type", "==", "hotDeal")
-          .orderBy("timestamp", "desc")
-          .limit(200)
-          .get();
-        const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
-
-        for (const deal of hotDeals) {
-          if (sentIds.has(deal.id)) continue;
-
-          const rate = Math.round(dropRate(deal));
-          const title = `🔥 핫딜 ${rate}% 할인!`;
-
-          const rawId = extractRawId(deal.id);
-          const docId = sanitizeDocId(rawId ?? deal.id);
-
-          await sendToTopic("hotDeal", title, deal.title, "hotDeal", docId);
-
-          const cat = await matchCategory(deal.title);
-          if (cat && CATEGORY_MAP[cat]) {
-            await sendToTopic(
-              `hotDeal_${CATEGORY_MAP[cat]}`,
-              title,
-              deal.title,
-              "hotDeal",
-              docId
-            );
-          }
-
-          await sentRef.add({
-            productId: deal.id,
-            type: "hotDeal",
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          break;
+    await sendTimeBoundAlert(
+      hotDeals,
+      "hotDeal",
+      RATE_LIMIT.HOT_DEAL,
+      (deal) => `🔥 핫딜 ${Math.round(dropRate(deal))}% 할인!`,
+      async (deal, docId) => {
+        const cat = await matchCategory(deal.title);
+        if (cat && CATEGORY_MAP[cat]) {
+          const title = `🔥 핫딜 ${Math.round(dropRate(deal))}% 할인!`;
+          await sendToTopic(`hotDeal_${CATEGORY_MAP[cat]}`, title, deal.title, "hotDeal", docId);
         }
-      }
-    }
+      },
+    );
 
     // ③ 마감임박 알림 (시간당 최대 1건)
     const now = Date.now();
@@ -146,53 +157,16 @@ export const syncDeals = onSchedule(
       const diffMin = (endTime - now) / 60000;
       return diffMin > 0 && diffMin <= 60;
     });
-
-    if (endingSoon.length > 0) {
-      const db = admin.firestore();
-      const sentRef = db.collection("sent_notifications");
-
-      const recentEnd = await sentRef
-        .where("type", "==", "saleEnd")
-        .orderBy("timestamp", "desc")
-        .limit(1)
-        .get();
-      const lastEndTime = recentEnd.docs[0]?.data()?.timestamp?.toDate?.();
-      const canSendEnd = !lastEndTime || (Date.now() - lastEndTime.getTime()) >= RATE_LIMIT.SALE_END;
-
-      if (canSendEnd) {
-        const sentSnap = await sentRef
-          .where("type", "==", "saleEnd")
-          .orderBy("timestamp", "desc")
-          .limit(200)
-          .get();
-        const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
-
-        for (const deal of endingSoon) {
-          if (sentIds.has(deal.id)) continue;
-
-          const endTime = new Date(deal.saleEndDate!).getTime();
-          const minutesLeft = Math.round((endTime - now) / 60000);
-
-          const rawId = extractRawId(deal.id);
-          const docId = sanitizeDocId(rawId ?? deal.id);
-
-          await sendToTopic(
-            "saleEnd",
-            `⏰ ${minutesLeft}분 후 마감!`,
-            deal.title,
-            "saleEnd",
-            docId
-          );
-
-          await sentRef.add({
-            productId: deal.id,
-            type: "saleEnd",
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          break;
-        }
-      }
-    }
+    await sendTimeBoundAlert(
+      endingSoon,
+      "saleEnd",
+      RATE_LIMIT.SALE_END,
+      (deal) => {
+        const endTime = new Date(deal.saleEndDate!).getTime();
+        const minutesLeft = Math.round((endTime - now) / 60000);
+        return `⏰ ${minutesLeft}분 후 마감!`;
+      },
+    );
 
     // ④ 오래된 발송 기록 정리 (7일 이상)
     const cutoff = new Date();
@@ -541,6 +515,19 @@ export const sendSmartDigests = onSchedule(
     if (sentCount > 0) {
       console.log(`[sendSmartDigests] sent ${sentCount} smart digests`);
     }
+  }
+);
+
+export const checkKeywordPriceAlerts = onSchedule(
+  {
+    schedule: "every 6 hours",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 300,
+    secrets: ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
+  },
+  async () => {
+    await checkKeywordPriceAlertsImpl();
   }
 );
 

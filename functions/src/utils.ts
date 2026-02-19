@@ -27,6 +27,14 @@ import {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+export function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export function dropRate(p: ProductJson): number {
   if (!p.previousPrice || p.previousPrice <= 0) return 0;
   return ((p.previousPrice - p.currentPrice) / p.previousPrice) * 100;
@@ -195,9 +203,8 @@ export async function writeProducts(
   // ── Firestore 저장 ──
   let written = 0;
 
-  for (let i = 0; i < unique.length; i += FIRESTORE_BATCH_LIMIT) {
+  for (const chunk of chunkArray(unique, FIRESTORE_BATCH_LIMIT)) {
     const batch = db.batch();
-    const chunk = unique.slice(i, i + FIRESTORE_BATCH_LIMIT);
 
     for (const p of chunk) {
       const rawId = extractRawId(p.id);

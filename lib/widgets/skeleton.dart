@@ -248,44 +248,13 @@ class SkeletonHomeFeed extends ConsumerWidget {
   }
 }
 
-/// 메이슨리 스타일 스켈레톤 그리드 (왼/오른 컬럼 높이가 다름)
-class _SkeletonMasonryGrid extends StatelessWidget {
-  // 왼쪽 컬럼 이미지 비율
-  static const _leftAspects = [1.0, 0.8, 1.1, 0.9];
-  // 오른쪽 컬럼 이미지 비율 (왼쪽과 다르게 엇갈림)
-  static const _rightAspects = [0.85, 1.05, 0.75, 1.0];
+/// 공통 스켈레톤 상품 카드 (메이슨리 + 그리드 공용)
+class _SkeletonCard extends StatelessWidget {
+  final double imageAspect;
+  const _SkeletonCard({this.imageAspect = 1.0});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            children: _leftAspects
-                .map((a) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _card(a),
-                    ))
-                .toList(),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            children: _rightAspects
-                .map((a) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _card(a),
-                    ))
-                .toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _card(double imageAspect) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -296,116 +265,6 @@ class _SkeletonMasonryGrid extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: imageAspect,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                    width: 50,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 6),
-                Container(
-                    width: double.infinity,
-                    height: 12,
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 4),
-                Container(
-                    width: 80,
-                    height: 12,
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Container(
-                      width: 40,
-                      height: 18,
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4))),
-                  const SizedBox(width: 6),
-                  Container(
-                      width: 70,
-                      height: 18,
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4))),
-                ]),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 상품 그리드만 스켈레톤 (카테고리 피드용 - 칩은 이미 실제 위젯으로 표시됨)
-class SkeletonProductGrid extends StatelessWidget {
-  final TteolgaTheme theme;
-  const SkeletonProductGrid({super.key, required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = theme.brightness == Brightness.dark;
-    final baseColor =
-        isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE0E0E0);
-    final highlightColor =
-        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F0F0);
-
-    return Shimmer(
-      baseColor: baseColor,
-      highlightColor: highlightColor,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: ListView(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          children: List.generate(4, (row) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: row < 3 ? 10 : 0),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _card(row.isEven ? 1.0 : 0.85)),
-                    const SizedBox(width: 10),
-                    Expanded(child: _card(row.isEven ? 0.9 : 1.0)),
-                  ],
-                ),
-              ),
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
-  Widget _card(double aspect) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: aspect,
             child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -459,6 +318,88 @@ class SkeletonProductGrid extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 메이슨리 스타일 스켈레톤 그리드 (왼/오른 컬럼 높이가 다름)
+class _SkeletonMasonryGrid extends StatelessWidget {
+  static const _leftAspects = [1.0, 0.8, 1.1, 0.9];
+  static const _rightAspects = [0.85, 1.05, 0.75, 1.0];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            children: _leftAspects
+                .map((a) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _SkeletonCard(imageAspect: a),
+                    ))
+                .toList(),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            children: _rightAspects
+                .map((a) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _SkeletonCard(imageAspect: a),
+                    ))
+                .toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 상품 그리드만 스켈레톤 (카테고리 피드용 - 칩은 이미 실제 위젯으로 표시됨)
+class SkeletonProductGrid extends StatelessWidget {
+  final TteolgaTheme theme;
+  const SkeletonProductGrid({super.key, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = theme.brightness == Brightness.dark;
+    final baseColor =
+        isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE0E0E0);
+    final highlightColor =
+        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F0F0);
+
+    return Shimmer(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: ListView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          children: List.generate(4, (row) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: row < 3 ? 10 : 0),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                        child: _SkeletonCard(
+                            imageAspect: row.isEven ? 1.0 : 0.85)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _SkeletonCard(
+                            imageAspect: row.isEven ? 0.9 : 1.0)),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }

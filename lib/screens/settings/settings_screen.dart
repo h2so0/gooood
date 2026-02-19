@@ -7,7 +7,6 @@ import '../../providers/notification_provider.dart';
 import '../../services/notification_service.dart';
 import 'notification_history_sheet.dart';
 import '../legal_screen.dart';
-import '../../services/device_profile_sync.dart';
 import '../../widgets/coupang_banner.dart';
 import 'settings_widgets.dart';
 import 'viewed_products_sheet.dart';
@@ -182,7 +181,7 @@ class SettingsScreen extends ConsumerWidget {
                   label: '방해금지 시간',
                   trailing:
                       '${noti.quietStartHour.toString().padLeft(2, '0')}시~${noti.quietEndHour.toString().padLeft(2, '0')}시',
-                  onTap: () => _showQuietHourPicker(context, ref),
+                  onTap: () => showQuietHourPicker(context, ref),
                 ),
               ],
             ),
@@ -301,152 +300,6 @@ class SettingsScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => const ViewedProductsSheet(),
-    );
-  }
-
-  void _showQuietHourPicker(BuildContext context, WidgetRef ref) {
-    final noti = ref.read(notificationSettingsProvider);
-    int startHour = noti.quietStartHour;
-    int endHour = noti.quietEndHour;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final t = ref.read(tteolgaThemeProvider);
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(
-                  24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
-              decoration: BoxDecoration(
-                color: t.card,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('방해금지 시간',
-                      style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text('이 시간에는 맞춤 알림을 보내지 않아요',
-                      style:
-                          TextStyle(color: t.textTertiary, fontSize: 13)),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _HourSelector(
-                          label: '시작',
-                          hour: startHour,
-                          theme: t,
-                          onChanged: (h) =>
-                              setSheetState(() => startHour = h),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('~',
-                            style: TextStyle(
-                                color: t.textSecondary, fontSize: 18)),
-                      ),
-                      Expanded(
-                        child: _HourSelector(
-                          label: '종료',
-                          hour: endHour,
-                          theme: t,
-                          onChanged: (h) =>
-                              setSheetState(() => endHour = h),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: t.textPrimary,
-                        foregroundColor: t.bg,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () {
-                        ref
-                            .read(notificationSettingsProvider.notifier)
-                            .setQuietHours(startHour, endHour);
-                        DeviceProfileSync().syncNow();
-                        Navigator.of(ctx).pop();
-                      },
-                      child: const Text('저장',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _HourSelector extends StatelessWidget {
-  final String label;
-  final int hour;
-  final TteolgaTheme theme;
-  final ValueChanged<int> onChanged;
-
-  const _HourSelector({
-    required this.label,
-    required this.hour,
-    required this.theme,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = theme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(color: t.textTertiary, fontSize: 12)),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: t.bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: t.border),
-          ),
-          child: DropdownButton<int>(
-            value: hour,
-            isExpanded: true,
-            underline: const SizedBox.shrink(),
-            dropdownColor: t.card,
-            style: TextStyle(color: t.textPrimary, fontSize: 15),
-            items: List.generate(24, (i) {
-              return DropdownMenuItem(
-                value: i,
-                child: Text('${i.toString().padLeft(2, '0')}:00'),
-              );
-            }),
-            onChanged: (v) {
-              if (v != null) onChanged(v);
-            },
-          ),
-        ),
-      ],
     );
   }
 }
