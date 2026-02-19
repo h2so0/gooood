@@ -31,6 +31,21 @@ class KeywordPriceAnalyzer {
     }
     products = filterPriceOutliers(products);    // IQR 이상치 제거
 
+    // 폴백: 필터 후 결과가 3개 미만이면 카테고리/이상치 필터 없이 재시도
+    if (products.length < 3) {
+      products = filterParts(raw);
+      products = filterRentalProducts(products);
+      products = filterByKeywordRelevance(products, keyword);
+      products = filterPriceOutliers(products);
+    }
+
+    // 2차 폴백: 여전히 부족하면 키워드 관련성 필터도 완화
+    if (products.length < 3) {
+      products = filterParts(raw);
+      products = filterRentalProducts(products);
+      products = filterPriceOutliers(products);
+    }
+
     if (products.isEmpty) {
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       return KeywordPriceSnapshot(

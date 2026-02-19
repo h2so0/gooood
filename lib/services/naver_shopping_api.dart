@@ -11,10 +11,8 @@ import 'product_filter.dart';
 export '../models/trend_data.dart';
 
 class NaverShoppingApi {
-  static const _clientId = String.fromEnvironment('NAVER_CLIENT_ID');
-  static const _clientSecret = String.fromEnvironment('NAVER_CLIENT_SECRET');
-  static const _shopUrl = 'https://openapi.naver.com/v1/search/shop.json';
-  static const _trendUrl = 'https://openapi.naver.com/v1/datalab/search';
+  static const _proxyUrl =
+      'https://asia-northeast3-gooddeal-app.cloudfunctions.net/naverProxy';
   static const _insightUrl =
       'https://datalab.naver.com/shoppingInsight/getKeywordRank.naver';
 
@@ -29,11 +27,6 @@ class NaverShoppingApi {
 
   static const _timeout = ApiConfig.timeout;
   static const _maxRetries = ApiConfig.maxRetries;
-
-  Map<String, String> get _headers => {
-        'X-Naver-Client-Id': _clientId,
-        'X-Naver-Client-Secret': _clientSecret,
-      };
 
   Future<http.Response> _getWithRetry(Uri uri, {Map<String, String>? headers}) async {
     for (var attempt = 0; attempt < _maxRetries; attempt++) {
@@ -75,14 +68,15 @@ class NaverShoppingApi {
     final cached = _cache.get<List<Product>>(cacheKey);
     if (cached != null) return cached;
 
-    final uri = Uri.parse(_shopUrl).replace(queryParameters: {
+    final uri = Uri.parse(_proxyUrl).replace(queryParameters: {
+      'action': 'search',
       'query': query,
       'display': display.toString(),
       'start': start.toString(),
       'sort': sort,
     });
 
-    final response = await _getWithRetry(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     if (response.statusCode != 200) {
       throw NaverApiException(
           'API failed: ${response.statusCode}', response.statusCode);
@@ -163,13 +157,16 @@ class NaverShoppingApi {
     if (cached != null) return cached;
 
     final response = await _postWithRetry(
-      Uri.parse(_trendUrl),
-      headers: {..._headers, 'Content-Type': 'application/json'},
+      Uri.parse(_proxyUrl),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'startDate': startDate,
-        'endDate': endDate,
-        'timeUnit': 'week',
-        'keywordGroups': keywordGroups,
+        'action': 'trend',
+        'payload': {
+          'startDate': startDate,
+          'endDate': endDate,
+          'timeUnit': 'week',
+          'keywordGroups': keywordGroups,
+        },
       }),
     );
 

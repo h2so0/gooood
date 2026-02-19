@@ -10,6 +10,9 @@ import {
   BEST100_CATEGORIES,
   DELAYS,
   RATE_LIMIT,
+  NAVER_CLIENT_ID,
+  NAVER_CLIENT_SECRET,
+  NAVER_SHOP_URL,
 } from "./config";
 import {
   sleep,
@@ -696,13 +699,19 @@ export const productPage = onRequest(
       var b=document.getElementById('store-btn');
       if(b)b.href=storeUrl;
 
-      // 인앱 브라우저: 외부 브라우저로 열어서 Universal Link 작동하게
       if(isInApp&&isIOS){
-        location.href='x-web-search://?'+encodeURIComponent(appUrl);
-        setTimeout(function(){location.href=appUrl},100);
+        // iOS 인앱 브라우저: 앱스토어로 직접 리다이렉트
         setTimeout(function(){location.href=storeUrl},1500);
       } else if(isInApp&&isAndroid){
-        location.href='intent://gooddeal-app.web.app'+location.pathname+'#Intent;scheme=https;package=com.goooood.app;end';
+        // Android 인앱 브라우저: intent로 외부 브라우저 시도 + 앱스토어 폴백
+        location.href='intent://gooddeal-app.web.app'+location.pathname+'#Intent;scheme=https;package=com.goooood.app;S.browser_fallback_url='+encodeURIComponent(storeUrl)+';end';
+        setTimeout(function(){location.href=storeUrl},1500);
+      } else {
+        // 일반 브라우저: Universal Link가 앱을 열지 못하면 앱스토어로
+        var start=Date.now();
+        setTimeout(function(){
+          if(Date.now()-start<2000) location.href=storeUrl;
+        },1500);
       }
     };
   </script>
@@ -721,6 +730,49 @@ export const productPage = onRequest(
 
     res.set("Cache-Control", "public, max-age=300");
     res.status(200).send(html);
+  }
+);
+
+export const naverProxy = onRequest(
+  {
+    region: "asia-northeast3",
+    cors: true,
+    secrets: ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
+  },
+  async (req, res) => {
+    const action = (req.query.action || req.body?.action) as string | undefined;
+    const naverHeaders: Record<string, string> = {
+      "X-Naver-Client-Id": NAVER_CLIENT_ID,
+      "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+    };
+
+    if (action === "search") {
+      const { query, display, start, sort } = req.query as Record<string, string>;
+      if (!query) {
+        res.status(400).json({ error: "missing query parameter" });
+        return;
+      }
+      const params = new URLSearchParams({ query, display: display || "20", start: start || "1", sort: sort || "sim" });
+      const url = `${NAVER_SHOP_URL}?${params}`;
+      const resp = await fetch(url, { headers: naverHeaders });
+      const data = await resp.json();
+      res.status(resp.status).json(data);
+    } else if (action === "trend") {
+      const payload = req.body?.payload;
+      if (!payload) {
+        res.status(400).json({ error: "missing payload in body" });
+        return;
+      }
+      const resp = await fetch("https://openapi.naver.com/v1/datalab/search", {
+        method: "POST",
+        headers: { ...naverHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      res.status(resp.status).json(data);
+    } else {
+      res.status(400).json({ error: "invalid action: use 'search' or 'trend'" });
+    }
   }
 );
 

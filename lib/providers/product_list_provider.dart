@@ -128,7 +128,7 @@ abstract class PaginatedProductsNotifier
       state = ProductListState(
         products: [...state.products, ...deduped],
         isLoading: false,
-        hasMore: page.length >= pageSize,
+        hasMore: snapshot.docs.length >= pageSize,
         lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
       );
     } catch (e) {

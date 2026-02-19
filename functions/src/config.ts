@@ -2,8 +2,8 @@
 // Environment variables, constants & config
 // ──────────────────────────────────────────
 
-export const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || "";
-export const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || "";
+export const NAVER_CLIENT_ID = (process.env.NAVER_CLIENT_ID || "").trim();
+export const NAVER_CLIENT_SECRET = (process.env.NAVER_CLIENT_SECRET || "").trim();
 export const NAVER_SHOP_URL = "https://openapi.naver.com/v1/search/shop.json";
 
 export const CATEGORY_MAP: Record<string, string> = {

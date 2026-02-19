@@ -1,2 +1,2 @@
 #!/bin/bash
-flutter build appbundle --release --dart-define-from-file=.env "$@"
+flutter build appbundle --release "$@"

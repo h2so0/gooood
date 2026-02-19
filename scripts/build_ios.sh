@@ -1,2 +1,2 @@
 #!/bin/bash
-flutter build ipa --release --dart-define-from-file=.env "$@"
+flutter build ipa --release "$@"
