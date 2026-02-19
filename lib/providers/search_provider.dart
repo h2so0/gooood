@@ -29,6 +29,6 @@ final searchResultsProvider =
     return [...hotMatches, ...filtered];
   } catch (e) {
     debugPrint('[SearchProvider] search error: $e');
-    return [];
+    rethrow;
   }
 });

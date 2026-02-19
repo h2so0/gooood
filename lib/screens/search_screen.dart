@@ -53,6 +53,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _search(String keyword) {
+    FocusScope.of(context).unfocus();
     _controller.text = keyword;
     setState(() => _query = keyword);
     AnalyticsService.logSearch(keyword);
@@ -202,6 +203,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ref.invalidate(keywordPriceHistoryProvider(_query));
           },
           child: CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
             slivers: [
@@ -236,8 +238,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       loading: () =>
           Center(child: CircularProgressIndicator(color: t.textTertiary)),
       error: (e, _) => Center(
-          child: Text('검색 실패',
-              style: TextStyle(color: t.textSecondary))),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wifi_off, color: t.textTertiary, size: 40),
+              const SizedBox(height: 12),
+              Text('검색에 실패했어요',
+                  style: TextStyle(color: t.textSecondary, fontSize: 14)),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => ref.invalidate(searchResultsProvider(_query)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: t.border),
+                  ),
+                  child: Text('다시 시도',
+                      style: TextStyle(
+                          color: t.textPrimary, fontSize: 13)),
+                ),
+              ),
+            ],
+          )),
     );
   }
 }

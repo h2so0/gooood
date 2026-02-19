@@ -172,7 +172,10 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
     _navigateToProduct(productId);
   }
 
+  static final _validProductId = RegExp(r'^[\w\-:.]{1,128}$');
+
   Future<void> _navigateToProduct(String productId) async {
+    if (!_validProductId.hasMatch(productId)) return;
     try {
       final doc = await FirebaseFirestore.instance
           .collection('products')

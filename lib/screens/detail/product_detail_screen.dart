@@ -54,8 +54,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       final diff = end.difference(DateTime.now());
       if (diff.isNegative || diff.inDays > 7) return;
       _remaining = diff;
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) { timer.cancel(); return; }
         setState(() {
           _remaining = end.difference(DateTime.now());
           if (_remaining!.isNegative) {

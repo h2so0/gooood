@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -10,8 +11,8 @@ import 'product_filter.dart';
 export '../models/trend_data.dart';
 
 class NaverShoppingApi {
-  static const _clientId = String.fromEnvironment('NAVER_CLIENT_ID', defaultValue: 'hiD1em_BVH7_sHIirwVD');
-  static const _clientSecret = String.fromEnvironment('NAVER_CLIENT_SECRET', defaultValue: 'b6yEA6sv6W');
+  static const _clientId = String.fromEnvironment('NAVER_CLIENT_ID');
+  static const _clientSecret = String.fromEnvironment('NAVER_CLIENT_SECRET');
   static const _shopUrl = 'https://openapi.naver.com/v1/search/shop.json';
   static const _trendUrl = 'https://openapi.naver.com/v1/datalab/search';
   static const _insightUrl =
@@ -26,10 +27,41 @@ class NaverShoppingApi {
   NaverShoppingApi({http.Client? client})
       : _client = client ?? http.Client();
 
+  static const _timeout = ApiConfig.timeout;
+  static const _maxRetries = ApiConfig.maxRetries;
+
   Map<String, String> get _headers => {
         'X-Naver-Client-Id': _clientId,
         'X-Naver-Client-Secret': _clientSecret,
       };
+
+  Future<http.Response> _getWithRetry(Uri uri, {Map<String, String>? headers}) async {
+    for (var attempt = 0; attempt < _maxRetries; attempt++) {
+      try {
+        return await _client.get(uri, headers: headers).timeout(_timeout);
+      } on TimeoutException {
+        if (attempt == _maxRetries - 1) rethrow;
+      } on http.ClientException {
+        if (attempt == _maxRetries - 1) rethrow;
+      }
+      await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+    }
+    throw TimeoutException('Max retries exceeded');
+  }
+
+  Future<http.Response> _postWithRetry(Uri uri, {Map<String, String>? headers, Object? body}) async {
+    for (var attempt = 0; attempt < _maxRetries; attempt++) {
+      try {
+        return await _client.post(uri, headers: headers, body: body).timeout(_timeout);
+      } on TimeoutException {
+        if (attempt == _maxRetries - 1) rethrow;
+      } on http.ClientException {
+        if (attempt == _maxRetries - 1) rethrow;
+      }
+      await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+    }
+    throw TimeoutException('Max retries exceeded');
+  }
 
   // ── 검색 (클라이언트 직접 호출) ──
 
@@ -50,7 +82,7 @@ class NaverShoppingApi {
       'sort': sort,
     });
 
-    final response = await _client.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri, headers: _headers);
     if (response.statusCode != 200) {
       throw NaverApiException(
           'API failed: ${response.statusCode}', response.statusCode);
@@ -130,7 +162,7 @@ class NaverShoppingApi {
     final cached = _cache.get<Map<String, List<TrendChartPoint>>>(cacheKey);
     if (cached != null) return cached;
 
-    final response = await _client.post(
+    final response = await _postWithRetry(
       Uri.parse(_trendUrl),
       headers: {..._headers, 'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -190,7 +222,7 @@ class NaverShoppingApi {
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final response = await _client.post(
+    final response = await _postWithRetry(
       Uri.parse(_insightUrl),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -277,7 +309,7 @@ class NaverShoppingApi {
 
     if (kIsWeb) return [];
 
-    final response = await _client.get(
+    final response = await _getWithRetry(
       Uri.parse(
           'https://snxbest.naver.com/api/v1/snxbest/keyword/rank'
           '?ageType=ALL&categoryId=A&sortType=KEYWORD_NEW&periodType=WEEKLY'),

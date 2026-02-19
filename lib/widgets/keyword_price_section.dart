@@ -411,9 +411,11 @@ class _WishlistButton extends ConsumerWidget {
         if (isWishlisted) {
           AnalyticsService.logKeywordWishlistRemove(keyword);
           ref.read(keywordWishlistProvider.notifier).remove(keyword);
+          _showSnack(context, t, '$keyword 저장 해제');
         } else {
           AnalyticsService.logKeywordWishlistAdd(keyword);
           ref.read(keywordWishlistProvider.notifier).add(keyword);
+          _showSnack(context, t, '$keyword 저장 완료');
         }
       },
       child: Container(
@@ -425,5 +427,16 @@ class _WishlistButton extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _showSnack(BuildContext context, TteolgaTheme t, String msg) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(msg, style: const TextStyle(fontSize: 13)),
+        backgroundColor: t.card,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ));
   }
 }

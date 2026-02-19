@@ -48,6 +48,9 @@ app.*.map.json
 android/key.properties
 android/app/upload-keystore.jks
 
+# Environment secrets
+.env
+
 # Firebase config (API keys)
 **/google-services.json
 **/GoogleService-Info.plist

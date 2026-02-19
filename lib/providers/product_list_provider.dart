@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_constants.dart';
 import '../models/product.dart';
 
 // ── 타입 ──
@@ -57,7 +58,7 @@ class ProductListState {
 
 abstract class PaginatedProductsNotifier
     extends StateNotifier<ProductListState> {
-  static const pageSize = 20;
+  static const pageSize = PaginationConfig.pageSize;
 
   int startOffset = 0;
   bool wrapped = false;

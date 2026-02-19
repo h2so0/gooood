@@ -9,7 +9,7 @@ import '../services/device_profile_sync.dart';
 import '../services/keyword_price_tracker.dart';
 import 'keyword_price_provider.dart';
 
-const _maxWishlistCount = 20;
+final _maxWishlistCount = AppLimits.maxWishlistCount;
 
 class KeywordWishlistNotifier extends StateNotifier<List<KeywordWishItem>> {
   final KeywordPriceTracker _tracker;

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/analytics_service.dart';
@@ -21,6 +23,8 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen> {
   int _tabIndex = 0;
   final Set<int> _visitedTabs = {0}; // 홈만 먼저 빌드
+  bool _isOffline = false;
+  late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
 
   static const _tabs = [
     '홈',
@@ -45,6 +49,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         }
       });
     });
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final offline = results.every((r) => r == ConnectivityResult.none);
+      if (offline != _isOffline) setState(() => _isOffline = offline);
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub.cancel();
+    super.dispose();
   }
 
   @override
@@ -220,6 +234,23 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             ),
           ),
           const SizedBox(height: 8),
+
+          // 오프라인 배너
+          if (_isOffline)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              color: t.drop.withValues(alpha: 0.15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wifi_off, size: 14, color: t.drop),
+                  const SizedBox(width: 6),
+                  Text('오프라인 상태입니다',
+                      style: TextStyle(color: t.drop, fontSize: 12)),
+                ],
+              ),
+            ),
 
           // Content — 방문한 탭은 IndexedStack으로 유지 (재로딩 방지)
           Expanded(

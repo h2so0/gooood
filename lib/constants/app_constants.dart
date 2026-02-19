@@ -44,3 +44,32 @@ const subCategories = <String, List<String>>{
 class CacheDurations {
   static const standard = Duration(minutes: 30);
 }
+
+/// API / Network
+class ApiConfig {
+  static const timeout = Duration(seconds: 10);
+  static const maxRetries = 3;
+  static const searchDisplay = 40;
+  static const priceCompareDisplay = 100;
+}
+
+/// Pagination
+class PaginationConfig {
+  static const pageSize = 20;
+  static const scrollThreshold = 500.0;
+}
+
+/// Review prompt thresholds
+class ReviewConfig {
+  static const minDaysSinceInstall = 3;
+  static const minViewCount = 5;
+  static const cooldownDays = 90;
+}
+
+/// Limits
+class AppLimits {
+  static const maxWishlistCount = 20;
+  static const maxViewedProducts = 50;
+  static const maxNotificationHistory = 100;
+  static const maxMemoryCacheEntries = 50;
+}

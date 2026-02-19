@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/app_constants.dart';
 
 /// 앱 내 리뷰 요청 — 조건을 충족하면 시스템 리뷰 다이얼로그 표시.
 ///
@@ -12,10 +13,6 @@ class ReviewService {
   static const _keyInstallDate = 'review_install_date';
   static const _keyViewCount = 'review_view_count';
   static const _keyLastPrompt = 'review_last_prompt';
-
-  static const _minDaysSinceInstall = 3;
-  static const _minViewCount = 5;
-  static const _cooldownDays = 90;
 
   /// 상품 상세 진입 시 호출 — 조회 수를 증가시키고 조건 체크.
   static Future<void> recordProductView() async {
@@ -48,14 +45,14 @@ class ReviewService {
 
   static bool _meetsConditions(SharedPreferences prefs, int viewCount) {
     // 조건 1: 조회 수
-    if (viewCount < _minViewCount) return false;
+    if (viewCount < ReviewConfig.minViewCount) return false;
 
     // 조건 2: 설치 후 경과일
     final installStr = prefs.getString(_keyInstallDate);
     if (installStr == null) return false;
     final installDate = DateTime.tryParse(installStr);
     if (installDate == null) return false;
-    if (DateTime.now().difference(installDate).inDays < _minDaysSinceInstall) {
+    if (DateTime.now().difference(installDate).inDays < ReviewConfig.minDaysSinceInstall) {
       return false;
     }
 
@@ -64,7 +61,7 @@ class ReviewService {
     if (lastStr != null) {
       final lastPrompt = DateTime.tryParse(lastStr);
       if (lastPrompt != null &&
-          DateTime.now().difference(lastPrompt).inDays < _cooldownDays) {
+          DateTime.now().difference(lastPrompt).inDays < ReviewConfig.cooldownDays) {
         return false;
       }
     }

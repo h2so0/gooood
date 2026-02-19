@@ -33,7 +33,7 @@ class CacheEntry<T> {
 }
 
 class MemoryCache {
-  static const _maxEntries = 50;
+  static const _maxEntries = AppLimits.maxMemoryCacheEntries;
   final Map<String, CacheEntry<dynamic>> _store = {};
 
   T? get<T>(String key) {

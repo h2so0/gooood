@@ -185,6 +185,15 @@ class _WishlistCard extends ConsumerWidget {
                 ref
                     .read(keywordWishlistProvider.notifier)
                     .remove(item.keyword);
+                ScaffoldMessenger.of(context)
+                  ..clearSnackBars()
+                  ..showSnackBar(SnackBar(
+                    content: Text('${item.keyword} 삭제됨',
+                        style: const TextStyle(fontSize: 13)),
+                    backgroundColor: t.card,
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ));
               }, color: t.textTertiary),
             ],
           ),

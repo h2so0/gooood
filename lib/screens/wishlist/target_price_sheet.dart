@@ -214,6 +214,15 @@ class _TargetPriceSheetState extends ConsumerState<TargetPriceSheet> {
         .read(keywordWishlistProvider.notifier)
         .updateTargetPrice(widget.keyword, price);
     Navigator.of(context).pop();
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text('목표가 ${formatPrice(price)} 설정',
+            style: const TextStyle(fontSize: 13)),
+        backgroundColor: ref.read(tteolgaThemeProvider).card,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ));
   }
 
   void _clear() {
@@ -222,5 +231,14 @@ class _TargetPriceSheetState extends ConsumerState<TargetPriceSheet> {
         .read(keywordWishlistProvider.notifier)
         .updateTargetPrice(widget.keyword, null);
     Navigator.of(context).pop();
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: const Text('목표가 해제됨',
+            style: TextStyle(fontSize: 13)),
+        backgroundColor: ref.read(tteolgaThemeProvider).card,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ));
   }
 }
