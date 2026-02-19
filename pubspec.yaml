@@ -29,6 +29,7 @@ dependencies:
   share_plus: ^12.0.1
   app_links: ^7.0.0
   fl_chart: ^0.70.2
+  firebase_analytics: ^11.6.0
 
 dev_dependencies:
   flutter_test:

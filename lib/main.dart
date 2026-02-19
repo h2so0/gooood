@@ -1,5 +1,6 @@
 import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -193,6 +194,9 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
       title: '굿딜',
       debugShowCheckedModeBanner: false,
       theme: t.toThemeData(),
+      navigatorObservers: [
+        FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
+      ],
       home: const MainScreen(),
     );
   }
