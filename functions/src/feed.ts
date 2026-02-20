@@ -36,22 +36,20 @@ function balancedShuffle<T extends HasSource>(items: T[]): T[] {
     list.push(...shuffled);
   }
 
-  // 3) 라운드로빈으로 판매처 균등 배분
-  const result: T[] = [];
-  const sources = fisherYatesShuffle(
-    [...groups.values()].filter((l) => l.length > 0)
-  );
+  // 3) 비례 분산: 소수 소스도 전체 피드에 걸쳐 균등 배치
+  const total = items.length;
+  const positioned: { item: T; idx: number }[] = [];
 
-  const maxLen = Math.max(...sources.map((l) => l.length));
-  for (let i = 0; i < maxLen; i++) {
-    for (const list of sources) {
-      if (i < list.length) {
-        result.push(list[i]);
-      }
+  for (const list of groups.values()) {
+    if (list.length === 0) continue;
+    const step = total / list.length;
+    for (let i = 0; i < list.length; i++) {
+      positioned.push({ item: list[i], idx: i * step + Math.random() * step * 0.5 });
     }
   }
 
-  return result;
+  positioned.sort((a, b) => a.idx - b.idx);
+  return positioned.map((p) => p.item);
 }
 
 // ──────────────────────────────────────────
