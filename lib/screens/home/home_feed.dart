@@ -25,6 +25,7 @@ class HomeFeed extends ConsumerStatefulWidget {
 class _HomeFeedState extends ConsumerState<HomeFeed> {
   bool _trendExpanded = false;
   int _trendPage = 0;
+  bool _showScrollTop = false;
   final ScrollController _scrollController = ScrollController();
   final PageController _trendPageController = PageController();
 
@@ -47,6 +48,10 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
         _scrollController.position.maxScrollExtent - 500) {
       ref.read(hotProductsProvider.notifier).fetchNextPage();
     }
+    final show = _scrollController.position.pixels > 800;
+    if (show != _showScrollTop) {
+      setState(() => _showScrollTop = show);
+    }
   }
 
   @override
@@ -61,74 +66,111 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
       return const SkeletonHomeFeed();
     }
 
-    return RefreshIndicator(
-      color: t.textPrimary,
-      backgroundColor: t.card,
-      onRefresh: () async {
-        await ref.read(hotProductsProvider.notifier).refresh();
-        ref.invalidate(trendKeywordsProvider);
-      },
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics()),
-        slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: 6)),
-          SliverToBoxAdapter(
-            child: trendKeywords.when(
-              data: (keywords) {
-                if (keywords.isEmpty) return const SizedBox();
-                return _buildTrendBar(t, keywords);
-              },
-              loading: () => const SizedBox(height: 44),
-              error: (_, _) => const SizedBox(),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CoupangBanner(),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          SliverToBoxAdapter(child: _sectionTitle(t, '오늘의 핫딜')),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          if (products.isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text('핫딜 상품을 불러오는 중...',
-                    style:
-                        TextStyle(color: t.textTertiary, fontSize: 13)),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          color: t.textPrimary,
+          backgroundColor: t.card,
+          onRefresh: () async {
+            await ref.read(hotProductsProvider.notifier).refresh();
+            ref.invalidate(trendKeywordsProvider);
+          },
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics()),
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 6)),
+              SliverToBoxAdapter(
+                child: trendKeywords.when(
+                  data: (keywords) {
+                    if (keywords.isEmpty) return const SizedBox();
+                    return _buildTrendBar(t, keywords);
+                  },
+                  loading: () => const SizedBox(height: 44),
+                  error: (_, _) => const SizedBox(),
+                ),
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverMasonryGrid.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childCount: products.length,
-                itemBuilder: (context, i) => ProductGridCard(
-                  product: products[i],
-                  onTap: () => widget.onTap(products[i]),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: CoupangBanner(),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _sectionTitle(t, '오늘의 핫딜')),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              if (products.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('핫딜 상품을 불러오는 중...',
+                        style:
+                            TextStyle(color: t.textTertiary, fontSize: 13)),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverMasonryGrid.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childCount: products.length,
+                    itemBuilder: (context, i) => ProductGridCard(
+                      product: products[i],
+                      onTap: () => widget.onTap(products[i]),
+                    ),
+                  ),
+                ),
+              if (hotState.isLoading && hotState.hasMore && products.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                        child:
+                            CircularProgressIndicator(color: t.textTertiary)),
+                  ),
+                ),
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ],
+          ),
+        ),
+        if (_showScrollTop)
+          Positioned(
+            right: 16,
+            bottom: 16 + MediaQuery.of(context).padding.bottom,
+            child: GestureDetector(
+              onTap: () => _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOut,
+              ),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: t.card,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: t.border, width: 0.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.keyboard_arrow_up,
+                  color: t.textSecondary,
+                  size: 24,
                 ),
               ),
             ),
-          if (hotState.isLoading && hotState.hasMore && products.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                    child:
-                        CircularProgressIndicator(color: t.textTertiary)),
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
-        ],
-      ),
+          ),
+      ],
     );
   }
 

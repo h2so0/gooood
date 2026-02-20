@@ -62,6 +62,7 @@ abstract class PaginatedProductsNotifier
 
   int startOffset = 0;
   bool wrapped = false;
+  int _refreshGen = 0;
 
   PaginatedProductsNotifier() : super(const ProductListState()) {
     fetchPage();
@@ -143,9 +144,13 @@ abstract class PaginatedProductsNotifier
   }
 
   Future<void> refresh() async {
+    final gen = ++_refreshGen;
     wrapped = false;
+    state = state.copyWith(isLoading: true);
 
     final total = await countTotal();
+    if (gen != _refreshGen) return; // 새 refresh가 시작됨
+
     startOffset = total > pageSize ? Random().nextInt(total) : 0;
 
     state = const ProductListState();
@@ -197,10 +202,16 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
 
   @override
   Future<void> onEmptyFirstPage() async {
-    if (_useFeedOrder) {
-      _useFeedOrder = false;
+    if (!_useFeedOrder) return;
+    // feedOrder 범위 끝에 걸려 빈 페이지 → 0부터 재시도
+    if (startOffset > 0) {
+      startOffset = 0;
       await fetchPage();
+      return;
     }
+    // startOffset=0인데도 비었으면 fallback
+    _useFeedOrder = false;
+    await fetchPage();
   }
 
   @override
