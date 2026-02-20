@@ -289,7 +289,7 @@ export async function writeProducts(
         dropRate: dropRate(p),
         source,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
     }
 
     await batch.commit();

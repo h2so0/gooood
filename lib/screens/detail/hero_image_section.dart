@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../models/product.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/image_helper.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/product_image.dart';
 
@@ -49,7 +51,7 @@ class DetailHeader extends StatelessWidget {
 }
 
 /// 스크롤 가능한 상품 이미지
-class HeroImageSection extends StatelessWidget {
+class HeroImageSection extends StatefulWidget {
   final Product product;
   final TteolgaTheme theme;
 
@@ -60,20 +62,60 @@ class HeroImageSection extends StatelessWidget {
   });
 
   @override
+  State<HeroImageSection> createState() => _HeroImageSectionState();
+}
+
+class _HeroImageSectionState extends State<HeroImageSection> {
+  double? _imageAspectRatio;
+
+  @override
+  void initState() {
+    super.initState();
+    // 그리드 카드에서 이미 로드한 이미지의 aspect ratio 캐시 확인
+    _imageAspectRatio = getCachedAspectRatio(widget.product.imageUrl);
+    if (_imageAspectRatio == null) {
+      _resolveImageSize();
+    }
+  }
+
+  void _resolveImageSize() {
+    final url = proxyImage(widget.product.imageUrl);
+    if (url.isEmpty) return;
+    final provider = CachedNetworkImageProvider(url);
+    final stream = provider.resolve(ImageConfiguration.empty);
+    stream.addListener(ImageStreamListener((info, _) {
+      final ratio = info.image.width / info.image.height;
+      cacheAspectRatio(widget.product.imageUrl, ratio);
+      if (mounted && _imageAspectRatio == null) {
+        setState(() => _imageAspectRatio = ratio);
+      }
+    }));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final t = theme;
+    final maxHeight = screenHeight * 0.48;
+    final t = widget.theme;
+
+    final double height;
+    if (_imageAspectRatio != null) {
+      height = (screenWidth / _imageAspectRatio!).clamp(0.0, maxHeight);
+    } else {
+      height = maxHeight;
+    }
 
     return Container(
       color: t.surface,
-      constraints: BoxConstraints(maxHeight: screenHeight * 0.48),
+      height: height,
       width: double.infinity,
       child: ProductImage(
-        imageUrl: product.imageUrl,
+        imageUrl: widget.product.imageUrl,
         fit: BoxFit.contain,
         errorIcon: Icons.shopping_bag_outlined,
         errorIconSize: 48,
-        memCacheWidth: (MediaQuery.of(context).size.width *
+        memCacheWidth: (screenWidth *
                 MediaQuery.devicePixelRatioOf(context))
             .toInt(),
       ),

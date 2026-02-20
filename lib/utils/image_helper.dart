@@ -8,3 +8,11 @@ String proxyImage(String url) {
   if (!kIsWeb || url.isEmpty) return url;
   return '$_proxyBase${Uri.encodeComponent(url)}';
 }
+
+/// 이미지 URL → aspect ratio (width / height) 전역 캐시
+final _imageAspectCache = <String, double>{};
+
+double? getCachedAspectRatio(String url) => _imageAspectCache[url];
+
+void cacheAspectRatio(String url, double ratio) =>
+    _imageAspectCache[url] = ratio;

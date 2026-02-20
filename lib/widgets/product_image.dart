@@ -55,6 +55,18 @@ class ProductImage extends ConsumerWidget {
                     color: t.textTertiary, size: errorIconSize ?? 28))
             : null,
       ),
+      imageBuilder: (context, imageProvider) {
+        // 이미지 로드 완료 시 aspect ratio를 전역 캐시에 저장
+        if (getCachedAspectRatio(imageUrl) == null) {
+          imageProvider.resolve(ImageConfiguration.empty).addListener(
+            ImageStreamListener((info, _) {
+              cacheAspectRatio(
+                  imageUrl, info.image.width / info.image.height);
+            }),
+          );
+        }
+        return Image(image: imageProvider, fit: fit);
+      },
     );
   }
 }
