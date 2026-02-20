@@ -61,10 +61,10 @@ function balancedShuffle<T extends HasSource>(items: T[]): T[] {
 export async function refreshFeedData(): Promise<void> {
   const db = admin.firestore();
 
-  // 1) dropRate > 0 인 전체 상품 조회
+  // 1) 전체 상품 조회 (dropRate 0 포함)
   const snap = await db
     .collection("products")
-    .where("dropRate", ">", 0)
+    .where("dropRate", ">=", 0)
     .get();
 
   if (snap.empty) {
