@@ -40,6 +40,10 @@ class DealBadgeWidget extends ConsumerWidget {
         return (const Color(0xFF5B7A9E), Colors.white);
       case DealBadge.auction:
         return (const Color(0xFF8C7355), Colors.white);
+      case DealBadge.lotteon:
+        return (const Color(0xFFC43B3B), Colors.white);
+      case DealBadge.ssg:
+        return (const Color(0xFFE66B5B), Colors.white);
     }
   }
 }

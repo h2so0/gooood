@@ -33,6 +33,15 @@ void main() async {
     Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
   ]);
 
+  // Firestore 오프라인 퍼시스턴스: 두 번째 실행부터 로컬 캐시 우선 반환
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
+  // SWR용 Hive box 사전 오픈
+  await Hive.openBox('feed_cache');
+
   runApp(const ProviderScope(child: TteolgaApp()));
 }
 

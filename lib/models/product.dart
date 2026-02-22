@@ -170,6 +170,8 @@ class Product {
     if (id.startsWith('11st_')) return DealBadge.st11;
     if (id.startsWith('gmkt_')) return DealBadge.gmarket;
     if (id.startsWith('auction_')) return DealBadge.auction;
+    if (id.startsWith('lotte_')) return DealBadge.lotteon;
+    if (id.startsWith('ssg_')) return DealBadge.ssg;
     return null;
   }
 
@@ -205,7 +207,9 @@ enum DealBadge {
   naverPromo('네이버 프로모션', '네이버'),
   st11('11번가', '11번가'),
   gmarket('G마켓', 'G마켓'),
-  auction('옥션', '옥션');
+  auction('옥션', '옥션'),
+  lotteon('롯데ON', '롯데ON'),
+  ssg('SSG', 'SSG');
 
   final String label;
   final String shortLabel;

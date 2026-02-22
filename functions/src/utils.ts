@@ -51,6 +51,8 @@ export function extractRawId(id: string): string | null {
   }
   if (id.startsWith("gmkt_")) return `gianex_${id.substring(5)}`;
   if (id.startsWith("auction_")) return `gianex_${id.substring(8)}`;
+  if (id.startsWith("lotte_")) return id; // 롯데ON: ID 그대로 사용
+  if (id.startsWith("ssg_")) return id;   // SSG: ID 그대로 사용
   return null;
 }
 
@@ -258,7 +260,8 @@ async function generateAllKeywords(
 
 export async function writeProducts(
   products: ProductJson[],
-  source: string
+  source: string,
+  options?: { deleteStale?: boolean }
 ): Promise<number> {
   if (products.length === 0) return 0;
 
@@ -303,6 +306,35 @@ export async function writeProducts(
   console.log(
     `[writeProducts] ${source}: ${written} products (${needsFullAI.length} full-AI, ${needsSubAI.length} sub-AI, ${skipped} cached, ${needsKeywords.length} keywords-gen)`
   );
+
+  // ── Stale 상품 즉시 삭제 ──
+  // 소스 API에서 더 이상 내려오지 않는 상품을 바로 제거
+  if (options?.deleteStale) {
+    const currentDocIds = new Set(unique.map((p) => getDocId(p)));
+    let staleDeleted = 0;
+
+    // 해당 source의 모든 기존 상품 조회
+    const existingSnap = await db
+      .collection("products")
+      .where("source", "==", source)
+      .select()  // ID만 필요하므로 필드 로드 최소화
+      .get();
+
+    const staleRefs = existingSnap.docs
+      .filter((doc) => !currentDocIds.has(doc.id))
+      .map((doc) => doc.ref);
+
+    if (staleRefs.length > 0) {
+      for (const chunk of chunkArray(staleRefs, FIRESTORE_BATCH_LIMIT)) {
+        const batch = db.batch();
+        chunk.forEach((ref) => batch.delete(ref));
+        await batch.commit();
+        staleDeleted += chunk.length;
+      }
+      console.log(`[writeProducts] ${source}: deleted ${staleDeleted} stale products`);
+    }
+  }
+
   return written;
 }
 

@@ -1,11 +1,10 @@
 {
   "applinks": {
+    "apps": [],
     "details": [
       {
-        "appIDs": ["X2729WMCKA.com.goooood.app"],
-        "components": [
-          { "/": "/product/*" }
-        ]
+        "appID": "X2729WMCKA.com.goooood.app",
+        "paths": ["/product/*"]
       }
     ]
   }

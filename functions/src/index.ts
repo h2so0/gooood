@@ -46,7 +46,10 @@ import {
   fetch11stDeals,
   fetchGmarketDeals,
   fetchAuctionDeals,
+  probeGianexSections,
 } from "./fetchers/external";
+import { fetchLotteonDeals } from "./fetchers/lotteon";
+import { fetchSsgDeals } from "./fetchers/ssg";
 import { refreshFeedData } from "./feed";
 
 admin.initializeApp();
@@ -116,6 +119,8 @@ const SYNC_TASKS: {
   { name: "11stDeals",       fn: fetch11stDeals,        key: "11stDeals",         source: "11st" },
   { name: "gmarketDeals",    fn: fetchGmarketDeals,     key: "gmarketDeals",      source: "gmarket" },
   { name: "auctionDeals",    fn: fetchAuctionDeals,     key: "auctionDeals",      source: "auction" },
+  { name: "lotteonDeals",   fn: fetchLotteonDeals,     key: "lotteonDeals",      source: "lotteon" },
+  { name: "ssgDeals",       fn: fetchSsgDeals,         key: "ssgDeals",          source: "ssg" },
   { name: "keywordRank",     fn: fetchKeywordRank,      key: "keywordRank", keepCache: true },
 ];
 
@@ -135,7 +140,7 @@ export const syncDeals = onSchedule(
     const products = await fetchTodayDeals();
     console.log(`Fetched ${products.length} today deals`);
 
-    await writeProducts(products, "todayDeal");
+    await writeProducts(products, "todayDeal", { deleteStale: true });
 
     // ② 핫딜 알림 (시간당 최대 1건)
     const hotDeals = products.filter((p) => dropRate(p) >= 30);
@@ -250,7 +255,7 @@ export const syncShoppingLive = onSchedule(
   async () => {
     try {
       const products = await fetchShoppingLive();
-      await writeProducts(products, "shoppingLive");
+      await writeProducts(products, "shoppingLive", { deleteStale: true });
       console.log(`Synced shoppingLive: ${products.length} products`);
     } catch (e) {
       console.error("Failed shoppingLive:", e);
@@ -269,7 +274,7 @@ export const syncPromotions = onSchedule(
   async () => {
     try {
       const promos = await fetchNaverPromotions();
-      await writeProducts(promos, "naverPromo");
+      await writeProducts(promos, "naverPromo", { deleteStale: true });
       console.log(`Synced naverPromotions: ${promos.length} products`);
     } catch (e) {
       console.error("Failed naverPromotions:", e);
@@ -281,6 +286,8 @@ const EXTERNAL_SOURCES = [
   { name: "11stDeals", fn: fetch11stDeals, source: "11st" },
   { name: "gmarketDeals", fn: fetchGmarketDeals, source: "gmarket" },
   { name: "auctionDeals", fn: fetchAuctionDeals, source: "auction" },
+  { name: "lotteonDeals", fn: fetchLotteonDeals, source: "lotteon" },
+  { name: "ssgDeals", fn: fetchSsgDeals, source: "ssg" },
 ] as const;
 
 export const syncExternalDeals = onSchedule(
@@ -296,7 +303,7 @@ export const syncExternalDeals = onSchedule(
       const { name, fn, source } = EXTERNAL_SOURCES[i];
       try {
         const products = await fn();
-        await writeProducts(products, source);
+        await writeProducts(products, source, { deleteStale: true });
         console.log(`Synced ${name}: ${products.length}`);
       } catch (e) {
         console.error(`Failed ${name}:`, e);
@@ -563,7 +570,7 @@ export const manualSync = onRequest(
           await writeCache(task.key, items);
         }
         if (task.source) {
-          await writeProducts(items as ProductJson[], task.source);
+          await writeProducts(items as ProductJson[], task.source, { deleteStale: true });
         }
         results.push(`${task.name}: ${items.length}`);
       } catch (e) {
@@ -606,6 +613,16 @@ export const manualSync = onRequest(
       results.push(`backfillKeywords: ${kwBackfilled}`);
     } catch (e) {
       results.push(`backfillKeywords: ERROR ${e}`);
+    }
+
+    // sectionSeq 탐색 (G마켓: 1-20, 옥션: 1030-1050)
+    try {
+      const gmktSections = await probeGianexSections(1, 20);
+      results.push(`probeGmarket: ${gmktSections.map((s) => `${s.seq}(${s.count})`).join(", ") || "none"}`);
+      const auctionSections = await probeGianexSections(1030, 1050);
+      results.push(`probeAuction: ${auctionSections.map((s) => `${s.seq}(${s.count})`).join(", ") || "none"}`);
+    } catch (e) {
+      results.push(`probeGianex: ERROR ${e}`);
     }
 
     try {
@@ -692,26 +709,21 @@ export const productPage = onRequest(
     var isIOS=/iphone|ipad|ipod/.test(ua);
     var isAndroid=/android/.test(ua);
     var storeUrl=isIOS?'https://apps.apple.com/kr/app/id6759038924':'https://play.google.com/store/apps/details?id=com.goooood.app';
-    var appUrl='https://gooddeal-app.web.app'+location.pathname;
     var isInApp=/kakaotalk|naver|line|instagram|fbav|twitter|wv\)/.test(ua);
 
+    // 이 페이지가 로딩되었다는 것은 Universal Link/App Link로 앱이 열리지 않았다는 뜻.
+    // → 앱 미설치이므로 스토어로 안내.
     window.onload=function(){
       var b=document.getElementById('store-btn');
       if(b)b.href=storeUrl;
 
-      if(isInApp&&isIOS){
-        // iOS 인앱 브라우저: 앱스토어로 직접 리다이렉트
-        setTimeout(function(){location.href=storeUrl},1500);
-      } else if(isInApp&&isAndroid){
-        // Android 인앱 브라우저: intent로 외부 브라우저 시도 + 앱스토어 폴백
+      if(isInApp&&isAndroid){
+        // Android 인앱 브라우저: intent로 외부 브라우저 시도 + 스토어 폴백
         location.href='intent://gooddeal-app.web.app'+location.pathname+'#Intent;scheme=https;package=com.goooood.app;S.browser_fallback_url='+encodeURIComponent(storeUrl)+';end';
+      }
+      // iOS/Android 모두: 1.5초 후 스토어로 리다이렉트
+      if(isIOS||isAndroid){
         setTimeout(function(){location.href=storeUrl},1500);
-      } else {
-        // 일반 브라우저: Universal Link가 앱을 열지 못하면 앱스토어로
-        var start=Date.now();
-        setTimeout(function(){
-          if(Date.now()-start<2000) location.href=storeUrl;
-        },1500);
       }
     };
   </script>

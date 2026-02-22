@@ -16,16 +16,18 @@ final trendKeywordsProvider =
   final allKeywords = <TrendKeyword>[];
   try {
     final categories = ['50000003', '50000000', '50000002', '50000008'];
-    for (final cid in categories) {
-      try {
-        final popular = await api.fetchPopularKeywords(categoryId: cid);
-        for (final p in popular.take(5)) {
-          allKeywords.add(TrendKeyword(
-            keyword: p.keyword,
-            ratio: (10 - p.rank + 1).toDouble(),
-          ));
-        }
-      } catch (e) { debugPrint('[TrendProvider] popular keywords error: $e'); }
+    final results = await Future.wait(
+      categories.map((cid) => api.fetchPopularKeywords(categoryId: cid)
+          .then<List<PopularKeyword>>((v) => v)
+          .catchError((_) => <PopularKeyword>[])),
+    );
+    for (final popular in results) {
+      for (final p in popular.take(5)) {
+        allKeywords.add(TrendKeyword(
+          keyword: p.keyword,
+          ratio: (10 - p.rank + 1).toDouble(),
+        ));
+      }
     }
   } catch (e) { debugPrint('[TrendProvider] fallback error: $e'); }
 

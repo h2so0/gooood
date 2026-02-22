@@ -28,18 +28,27 @@
     .sub { font-size: 12px; color: #aaa; margin-top: 16px; }
   </style>
   <script>
-    const ua = navigator.userAgent.toLowerCase();
-    const isIOS = /iphone|ipad|ipod/.test(ua);
-    const isAndroid = /android/.test(ua);
-    const storeUrl = isIOS
+    var ua = navigator.userAgent.toLowerCase();
+    var isIOS = /iphone|ipad|ipod/.test(ua);
+    var isAndroid = /android/.test(ua);
+    var storeUrl = isIOS
       ? 'https://apps.apple.com/kr/app/id6759038924'
       : 'https://play.google.com/store/apps/details?id=com.goooood.app';
+    var isInApp = /kakaotalk|naver|line|instagram|fbav|twitter|wv\)/.test(ua);
 
-    // 앱이 설치되어 있으면 Universal Link / App Link로 이미 앱이 열림
-    // 여기까지 왔다면 앱이 없는 것이므로 스토어로 안내
+    // 이 페이지가 로딩됨 = Universal Link로 앱이 열리지 않음 = 앱 미설치
     window.onload = function() {
-      const btn = document.getElementById('store-btn');
+      var btn = document.getElementById('store-btn');
       if (btn) btn.href = storeUrl;
+
+      if (isInApp && isAndroid) {
+        location.href = 'intent://gooddeal-app.web.app' + location.pathname +
+          '#Intent;scheme=https;package=com.goooood.app;S.browser_fallback_url=' +
+          encodeURIComponent(storeUrl) + ';end';
+      }
+      if (isIOS || isAndroid) {
+        setTimeout(function() { location.href = storeUrl; }, 1500);
+      }
     };
   </script>
 </head>

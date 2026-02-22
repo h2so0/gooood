@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import '../constants/app_constants.dart';
 import '../models/product.dart';
 
@@ -162,6 +164,45 @@ abstract class PaginatedProductsNotifier
 
 class HotProductsNotifier extends PaginatedProductsNotifier {
   bool _useFeedOrder = true;
+  static const _cacheKey = 'hot_first_page';
+
+  HotProductsNotifier() {
+    _loadCachedProducts();
+  }
+
+  /// SWR: 캐시 데이터를 즉시 표시한 뒤 Firestore에서 최신 데이터로 교체
+  Future<void> _loadCachedProducts() async {
+    try {
+      final box = Hive.box(HiveBoxes.feedCache);
+      final raw = box.get(_cacheKey);
+      if (raw != null) {
+        final list = (jsonDecode(raw as String) as List)
+            .map((e) => Product.fromJson(e as Map<String, dynamic>))
+            .toList();
+        if (list.isNotEmpty) {
+          state = ProductListState(
+            products: list,
+            isLoading: true, // Firestore 갱신 진행 중 표시
+            hasMore: true,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[HotProducts] cache load error: $e');
+    }
+  }
+
+  /// 첫 페이지 결과를 Hive에 저장
+  void _saveCacheIfFirstPage() {
+    if (state.products.isEmpty) return;
+    try {
+      final box = Hive.box(HiveBoxes.feedCache);
+      final items = state.products.take(PaginatedProductsNotifier.pageSize * 2).toList();
+      box.put(_cacheKey, jsonEncode(items.map((p) => p.toJson()).toList()));
+    } catch (e) {
+      debugPrint('[HotProducts] cache save error: $e');
+    }
+  }
 
   @override
   String get logTag => 'HotProducts';
@@ -188,6 +229,15 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
         .where('dropRate', isGreaterThan: 0)
         .orderBy('dropRate', descending: true)
         .limit(PaginatedProductsNotifier.pageSize);
+  }
+
+  @override
+  Future<void> fetchPage() async {
+    final wasEmpty = state.products.isEmpty;
+    await super.fetchPage();
+    if (wasEmpty && state.products.isNotEmpty) {
+      _saveCacheIfFirstPage();
+    }
   }
 
   @override
@@ -218,6 +268,7 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   Future<void> refresh() async {
     _useFeedOrder = true;
     await super.refresh();
+    _saveCacheIfFirstPage();
   }
 }
 

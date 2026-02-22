@@ -62,3 +62,26 @@ export const DELAYS = {
   BEST100_BETWEEN: 500,
   EXTERNAL_BETWEEN: 1000,
 } as const;
+
+// ── 피드 소스 쿼터 설정 ──
+// maxRatio: 소스가 전체 피드에서 차지할 수 있는 최대 비율
+// minRatio: 소스에 최소 보장되는 비율 (상품이 충분할 때)
+
+export const SOURCE_QUOTA: Record<string, { maxRatio: number; minRatio: number }> = {
+  best100:      { maxRatio: 0.20, minRatio: 0.05 },
+  todayDeal:    { maxRatio: 0.12, minRatio: 0.03 },
+  shoppingLive: { maxRatio: 0.08, minRatio: 0.02 },
+  naverPromo:   { maxRatio: 0.10, minRatio: 0.02 },
+  "11st":       { maxRatio: 0.12, minRatio: 0.06 },
+  gmarket:      { maxRatio: 0.12, minRatio: 0.06 },
+  auction:      { maxRatio: 0.08, minRatio: 0.03 },
+  lotteon:      { maxRatio: 0.10, minRatio: 0.04 },
+  ssg:          { maxRatio: 0.10, minRatio: 0.04 },
+};
+
+// 네이버 소스 합계 최대 50%
+export const NAVER_SOURCES = ["best100", "todayDeal", "shoppingLive", "naverPromo"];
+export const NAVER_MAX_TOTAL_RATIO = 0.50;
+// 외부 소스 합계 최소 30%
+export const EXTERNAL_SOURCES_LIST = ["11st", "gmarket", "auction", "lotteon", "ssg"];
+export const EXTERNAL_MIN_TOTAL_RATIO = 0.30;

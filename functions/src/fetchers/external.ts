@@ -13,24 +13,30 @@ function normalizeImageUrl(url: string): string {
   return imgUrl.replace(/resize\/\d+x\d+/, "resize/800x800");
 }
 
-export async function fetch11stDeals(): Promise<ProductJson[]> {
-  const res = await fetch(
-    "https://apis.11st.co.kr/pui/v2/page?pageId=PCHOMEHOME",
-    { headers: { Accept: "application/json", ...COMMON_HEADERS } }
-  );
-  if (!res.ok) return [];
+/** 11번가 페이지 ID 목록: PC홈, 모바일홈, 쇼킹딜 */
+const ELEVEN_PAGE_IDS = ["PCHOMEHOME", "MHOMEHOME", "PCDEAL"];
 
-  const data = (await res.json()) as any;
+const DEAL_TYPES = [
+  "PC_Product_Deal_Focus",
+  "PC_Product_Deal_Time",
+  "PC_Product_Deal_Emergency",
+  "PC_Product_Deal_Shooting",
+  // 모바일 타입
+  "Mobile_Product_Deal_Focus",
+  "Mobile_Product_Deal_Time",
+  "Mobile_Product_Deal_Emergency",
+  "Mobile_Product_Deal_Shooting",
+  // 쇼킹딜 타입
+  "PC_Product_Deal_ShockingDeal",
+  "PC_Product_ShockingDeal",
+];
+
+function parse11stItems(
+  data: any,
+  seenIds: Set<string>
+): ProductJson[] {
   const carriers = data?.data ?? [];
-  const DEAL_TYPES = [
-    "PC_Product_Deal_Focus",
-    "PC_Product_Deal_Time",
-    "PC_Product_Deal_Emergency",
-    "PC_Product_Deal_Shooting",
-  ];
-
   const products: ProductJson[] = [];
-  const seenIds = new Set<string>();
 
   for (const carrier of carriers) {
     for (const block of carrier.blockList ?? []) {
@@ -63,7 +69,7 @@ export async function fetch11stDeals(): Promise<ProductJson[]> {
           brand: null,
           maker: null,
           category1: "11번가",
-          category2: block.type.replace("PC_Product_Deal_", ""),
+          category2: block.type.replace(/(?:PC|Mobile)_Product_Deal_/, ""),
           category3: null,
           productType: "1",
           reviewScore: null,
@@ -82,6 +88,27 @@ export async function fetch11stDeals(): Promise<ProductJson[]> {
             : null,
         });
       }
+    }
+  }
+  return products;
+}
+
+export async function fetch11stDeals(): Promise<ProductJson[]> {
+  const products: ProductJson[] = [];
+  const seenIds = new Set<string>();
+
+  for (const pageId of ELEVEN_PAGE_IDS) {
+    try {
+      const res = await fetch(
+        `https://apis.11st.co.kr/pui/v2/page?pageId=${pageId}`,
+        { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+      );
+      if (!res.ok) continue;
+      const data = (await res.json()) as any;
+      products.push(...parse11stItems(data, seenIds));
+      await sleep(DELAYS.FETCH_BETWEEN);
+    } catch (e) {
+      console.error(`[11st] pageId=${pageId} error:`, e);
     }
   }
 
@@ -153,24 +180,69 @@ export function parseGianexItems(
   return products;
 }
 
+/**
+ * sectionSeq 범위를 순회하며 유효한 딜 섹션을 자동 탐색합니다.
+ * 각 섹션에 대해 첫 페이지만 요청하고, 상품이 포함되어 있으면 유효로 판단합니다.
+ */
+export async function probeGianexSections(
+  startSeq: number,
+  endSeq: number,
+  step = 1
+): Promise<{ seq: number; count: number }[]> {
+  const validSections: { seq: number; count: number }[] = [];
+
+  for (let seq = startSeq; seq <= endSeq; seq += step) {
+    try {
+      const res = await fetch(
+        `${GIANEX_API_BASE}?sectionSeq=${seq}&pageTypeSeq=1&pagingNumber=1`,
+        { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+      );
+      if (!res.ok) continue;
+      const data = (await res.json()) as any;
+      let itemCount = 0;
+      for (const mod of data.modules ?? []) {
+        for (const tab of mod.tabs ?? []) {
+          itemCount += (tab.components ?? []).length;
+        }
+      }
+      if (itemCount > 0) {
+        validSections.push({ seq, count: itemCount });
+        console.log(`[probeGianex] sectionSeq=${seq}: ${itemCount} items`);
+      }
+      await sleep(DELAYS.FETCH_BETWEEN);
+    } catch {
+      // skip invalid sections
+    }
+  }
+
+  return validSections;
+}
+
+/** G마켓 기본 sectionSeq + 추가 발견된 섹션 */
+const GMARKET_SECTIONS = [2];
+/** 옥션 기본 sectionSeq + 추가 발견된 섹션 */
+const AUCTION_SECTIONS = [1037];
+
 export async function fetchGmarketDeals(): Promise<ProductJson[]> {
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
-  for (let page = 1; page <= 3; page++) {
-    try {
-      const res = await fetch(
-        `${GIANEX_API_BASE}?sectionSeq=2&pageTypeSeq=1&pagingNumber=${page}`,
-        { headers: { Accept: "application/json", ...COMMON_HEADERS } }
-      );
-      if (!res.ok) break;
-      const data = (await res.json()) as any;
-      products.push(...parseGianexItems(data, "gmkt", seenIds));
-      if (!data.hasNext) break;
-      await sleep(DELAYS.FETCH_BETWEEN);
-    } catch (e) {
-      console.error(`[Gmarket] page ${page} error:`, e);
-      break;
+  for (const sectionSeq of GMARKET_SECTIONS) {
+    for (let page = 1; page <= 5; page++) {
+      try {
+        const res = await fetch(
+          `${GIANEX_API_BASE}?sectionSeq=${sectionSeq}&pageTypeSeq=1&pagingNumber=${page}`,
+          { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+        );
+        if (!res.ok) break;
+        const data = (await res.json()) as any;
+        products.push(...parseGianexItems(data, "gmkt", seenIds));
+        if (!data.hasNext) break;
+        await sleep(DELAYS.FETCH_BETWEEN);
+      } catch (e) {
+        console.error(`[Gmarket] section=${sectionSeq} page=${page} error:`, e);
+        break;
+      }
     }
   }
 
@@ -183,17 +255,23 @@ export async function fetchAuctionDeals(): Promise<ProductJson[]> {
   const products: ProductJson[] = [];
   const seenIds = new Set<string>();
 
-  try {
-    const res = await fetch(
-      `${GIANEX_API_BASE}?sectionSeq=1037&pageTypeSeq=1&pagingNumber=1`,
-      { headers: { Accept: "application/json", ...COMMON_HEADERS } }
-    );
-    if (res.ok) {
-      const data = (await res.json()) as any;
-      products.push(...parseGianexItems(data, "auction", seenIds));
+  for (const sectionSeq of AUCTION_SECTIONS) {
+    for (let page = 1; page <= 5; page++) {
+      try {
+        const res = await fetch(
+          `${GIANEX_API_BASE}?sectionSeq=${sectionSeq}&pageTypeSeq=1&pagingNumber=${page}`,
+          { headers: { Accept: "application/json", ...COMMON_HEADERS } }
+        );
+        if (!res.ok) break;
+        const data = (await res.json()) as any;
+        products.push(...parseGianexItems(data, "auction", seenIds));
+        if (!data.hasNext) break;
+        await sleep(DELAYS.FETCH_BETWEEN);
+      } catch (e) {
+        console.error(`[Auction] section=${sectionSeq} page=${page} error:`, e);
+        break;
+      }
     }
-  } catch (e) {
-    console.error("[Auction] error:", e);
   }
 
   sortByDropRate(products);

@@ -1,6 +1,13 @@
 import * as admin from "firebase-admin";
 import { VALID_CATEGORIES } from "./types";
-import { FIRESTORE_BATCH_LIMIT } from "./config";
+import {
+  FIRESTORE_BATCH_LIMIT,
+  SOURCE_QUOTA,
+  NAVER_SOURCES,
+  NAVER_MAX_TOTAL_RATIO,
+  EXTERNAL_SOURCES_LIST,
+  EXTERNAL_MIN_TOTAL_RATIO,
+} from "./config";
 
 // ──────────────────────────────────────────
 // balancedShuffle: 소스별 균등 배분 + Fisher-Yates 셔플
@@ -53,6 +60,154 @@ function balancedShuffle<T extends HasSource>(items: T[]): T[] {
 }
 
 // ──────────────────────────────────────────
+// balancedShuffleWithQuota: 소스별 최소/최대 쿼터 적용 + 라운드 로빈
+// ──────────────────────────────────────────
+
+function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
+  const total = items.length;
+  if (total === 0) return [];
+
+  // 1) 소스별 그룹핑 + 내부 셔플
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const src = item.source || "other";
+    if (!groups.has(src)) groups.set(src, []);
+    groups.get(src)!.push(item);
+  }
+
+  for (const list of groups.values()) {
+    const shuffled = fisherYatesShuffle(list);
+    list.length = 0;
+    list.push(...shuffled);
+  }
+
+  // 2) 소스별 할당량 계산
+  const allocation = new Map<string, number>();
+
+  // 2a) 최소 보장량 먼저 할당
+  for (const [src, list] of groups) {
+    const quota = SOURCE_QUOTA[src];
+    if (quota) {
+      const minCount = Math.min(Math.ceil(total * quota.minRatio), list.length);
+      allocation.set(src, minCount);
+    } else {
+      allocation.set(src, 0);
+    }
+  }
+
+  // 2b) 외부 소스 최소 합계 보장
+  const externalAllocated = EXTERNAL_SOURCES_LIST.reduce(
+    (sum, src) => sum + (allocation.get(src) || 0), 0
+  );
+  const externalMin = Math.ceil(total * EXTERNAL_MIN_TOTAL_RATIO);
+  if (externalAllocated < externalMin) {
+    const deficit = externalMin - externalAllocated;
+    let remaining = deficit;
+    for (const src of EXTERNAL_SOURCES_LIST) {
+      if (remaining <= 0) break;
+      const list = groups.get(src);
+      if (!list) continue;
+      const current = allocation.get(src) || 0;
+      const canAdd = Math.min(remaining, list.length - current);
+      if (canAdd > 0) {
+        allocation.set(src, current + canAdd);
+        remaining -= canAdd;
+      }
+    }
+  }
+
+  // 2c) 네이버 소스 최대 합계 제한
+  const naverMax = Math.floor(total * NAVER_MAX_TOTAL_RATIO);
+  let naverAllocated = NAVER_SOURCES.reduce(
+    (sum, src) => sum + (allocation.get(src) || 0), 0
+  );
+
+  // 나머지 슬롯을 채움 (각 소스의 maxRatio 내에서)
+  let usedSlots = Array.from(allocation.values()).reduce((a, b) => a + b, 0);
+  let freeSlots = total - usedSlots;
+
+  if (freeSlots > 0) {
+    // 남은 상품이 많은 소스부터 배분
+    const sortedSources = Array.from(groups.entries())
+      .map(([src, list]) => ({ src, available: list.length - (allocation.get(src) || 0) }))
+      .filter((s) => s.available > 0)
+      .sort((a, b) => b.available - a.available);
+
+    for (const { src, available } of sortedSources) {
+      if (freeSlots <= 0) break;
+      const quota = SOURCE_QUOTA[src];
+      const maxCount = quota ? Math.floor(total * quota.maxRatio) : total;
+      const current = allocation.get(src) || 0;
+      const isNaver = NAVER_SOURCES.includes(src);
+
+      let canAdd = Math.min(freeSlots, available, maxCount - current);
+      if (isNaver) {
+        canAdd = Math.min(canAdd, naverMax - naverAllocated);
+      }
+
+      if (canAdd > 0) {
+        allocation.set(src, current + canAdd);
+        freeSlots -= canAdd;
+        if (isNaver) naverAllocated += canAdd;
+      }
+    }
+  }
+
+  // 만약 슬롯이 남아 있으면 제한 없이 나머지 소스에서 채움
+  if (freeSlots > 0) {
+    for (const [src, list] of groups) {
+      if (freeSlots <= 0) break;
+      const current = allocation.get(src) || 0;
+      const canAdd = Math.min(freeSlots, list.length - current);
+      if (canAdd > 0) {
+        allocation.set(src, current + canAdd);
+        freeSlots -= canAdd;
+      }
+    }
+  }
+
+  // 3) 할당량만큼 슬라이스
+  const selected = new Map<string, T[]>();
+  for (const [src, count] of allocation) {
+    const list = groups.get(src);
+    if (list && count > 0) {
+      selected.set(src, list.slice(0, count));
+    }
+  }
+
+  // 4) 라운드 로빈 삽입 (연속 동일 소스 방지)
+  const result: T[] = [];
+  const queues = new Map<string, T[]>();
+  for (const [src, list] of selected) {
+    queues.set(src, [...list]);
+  }
+
+  let lastSource = "";
+  while (queues.size > 0) {
+    // 마지막과 다른 소스 우선, 같은 소스는 후순위
+    const candidates = Array.from(queues.entries())
+      .filter(([src]) => src !== lastSource);
+
+    let pick: [string, T[]] | undefined;
+    if (candidates.length > 0) {
+      // 남은 항목이 가장 많은 소스 선택 (균등 분산)
+      pick = candidates.reduce((a, b) => a[1].length >= b[1].length ? a : b);
+    } else {
+      // 단일 소스만 남은 경우
+      pick = Array.from(queues.entries())[0];
+    }
+
+    if (!pick) break;
+    const [src, queue] = pick;
+    result.push(queue.shift()!);
+    lastSource = src;
+    if (queue.length === 0) queues.delete(src);
+  }
+
+  return result;
+}
+
+// ──────────────────────────────────────────
 // refreshFeedData: feedOrder / categoryFeedOrder 일괄 계산
 // ──────────────────────────────────────────
 
@@ -84,8 +239,8 @@ export async function refreshFeedData(): Promise<void> {
 
   console.log(`[refreshFeedData] loaded ${allDocs.length} products`);
 
-  // 2) 글로벌 feedOrder: 전체 상품을 balancedShuffle 후 순번 할당
-  const globalShuffled = balancedShuffle(allDocs.map((d) => d.data));
+  // 2) 글로벌 feedOrder: 소스 쿼터 적용 셔플 후 순번 할당
+  const globalShuffled = balancedShuffleWithQuota(allDocs.map((d) => d.data));
   const globalOrderMap = new Map<string, number>();
   globalShuffled.forEach((item, idx) => {
     globalOrderMap.set(item.id, idx);
