@@ -6,7 +6,6 @@ import '../../models/product.dart';
 import '../../utils/url_launcher_helper.dart';
 import '../../utils/keyword_extractor.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/deal_badge.dart';
 import '../../widgets/keyword_price_section.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../services/analytics_service.dart';
@@ -114,18 +113,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        if (p.badge != null) ...[
-                          DealBadgeWidget(badge: p.badge!),
-                          const SizedBox(width: 8),
-                        ],
-                        if (p.mallName.isNotEmpty)
-                          Text(p.mallName,
-                              style: TextStyle(
-                                  color: t.textTertiary, fontSize: 13)),
-                      ],
-                    ),
+                    if (p.displayMallName.isNotEmpty)
+                      Text(p.displayMallName,
+                          style: TextStyle(
+                              color: t.textTertiary, fontSize: 13)),
                     const SizedBox(height: 10),
 
                     Text(

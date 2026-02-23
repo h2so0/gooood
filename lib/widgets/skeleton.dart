@@ -94,93 +94,7 @@ class _ShimmerState extends State<Shimmer> with SingleTickerProviderStateMixin {
   }
 }
 
-/// 스켈레톤 상품 카드 (ProductGridCard와 동일한 레이아웃)
-class SkeletonProductCard extends StatelessWidget {
-  final double imageAspect;
-  const SkeletonProductCard({super.key, this.imageAspect = 1.0});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 이미지 영역
-          AspectRatio(
-            aspectRatio: imageAspect,
-            child: Container(
-              decoration: const BoxDecoration(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-            ),
-          ),
-          // 텍스트 영역
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 상점명
-                Container(
-                  width: 50,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // 상품명 1줄
-                Container(
-                  width: double.infinity,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // 상품명 2줄
-                Container(
-                  width: 80,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // 가격
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 70,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 홈피드 전체 스켈레톤 (트렌드바 + 배너 + 상품그리드)
+/// 홈피드 전체 스켈레톤 (상품그리드)
 class SkeletonHomeFeed extends ConsumerWidget {
   const SkeletonHomeFeed({super.key});
 
@@ -195,48 +109,10 @@ class SkeletonHomeFeed extends ConsumerWidget {
     return Shimmer(
       baseColor: baseColor,
       highlightColor: highlightColor,
-      child: ListView(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 6),
-          // 트렌드 바 스켈레톤
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // 배너 스켈레톤
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              height: 72,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          // 섹션 타이틀 스켈레톤
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              width: 120,
-              height: 22,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
           // 상품 그리드 스켈레톤 (메이슨리 2열)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

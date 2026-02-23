@@ -53,6 +53,14 @@
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "source", "order": "ASCENDING" },
+        { "fieldPath": "feedOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "category", "order": "ASCENDING" },
         { "fieldPath": "categoryFeedOrder", "order": "ASCENDING" }
       ]

@@ -9,21 +9,33 @@ final themeModeProvider =
         (ref) => ThemeModeNotifier());
 
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  ThemeModeNotifier() : super(ThemeMode.dark) {
+  ThemeModeNotifier() : super(ThemeMode.system) {
     _load();
   }
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final isDark = prefs.getBool('isDarkMode') ?? true;
-    state = isDark ? ThemeMode.dark : ThemeMode.light;
+    final stored = prefs.getString('themeMode');
+    if (stored != null) {
+      state = ThemeMode.values.firstWhere(
+        (m) => m.name == stored,
+        orElse: () => ThemeMode.system,
+      );
+    } else {
+      // 기존 isDarkMode 불리언 마이그레이션
+      final isDark = prefs.getBool('isDarkMode');
+      if (isDark != null) {
+        state = isDark ? ThemeMode.dark : ThemeMode.light;
+        await prefs.setString('themeMode', state.name);
+        await prefs.remove('isDarkMode');
+      }
+    }
   }
 
-  void toggle() async {
-    final isDark = state == ThemeMode.dark;
-    state = isDark ? ThemeMode.light : ThemeMode.dark;
+  void setMode(ThemeMode mode) async {
+    state = mode;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkMode', !isDark);
+    await prefs.setString('themeMode', mode.name);
   }
 }
 
@@ -155,8 +167,17 @@ BoxDecoration cardDecoration(TteolgaTheme t) => BoxDecoration(
   border: Border.all(color: t.border, width: 0.5),
 );
 
+/// 시스템 밝기 추적 (WidgetsBindingObserver에서 갱신)
+final platformBrightnessProvider = StateProvider<Brightness>(
+  (ref) => WidgetsBinding.instance.platformDispatcher.platformBrightness,
+);
+
 /// Access current theme colors from anywhere via ref
 final tteolgaThemeProvider = Provider<TteolgaTheme>((ref) {
   final mode = ref.watch(themeModeProvider);
+  if (mode == ThemeMode.system) {
+    final brightness = ref.watch(platformBrightnessProvider);
+    return brightness == Brightness.dark ? TteolgaTheme.dark : TteolgaTheme.light;
+  }
   return mode == ThemeMode.light ? TteolgaTheme.light : TteolgaTheme.dark;
 });

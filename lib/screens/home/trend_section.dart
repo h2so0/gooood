@@ -3,20 +3,19 @@ import '../../models/trend_data.dart';
 import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../search_screen.dart';
-import 'rolling_keywords.dart';
 
-/// 인기 검색어 바 (접힘/펼침)
+/// 인기 차트 영역 (검색화면 idle에 표시)
 class TrendSection extends StatefulWidget {
   final List<TrendKeyword> keywords;
   final TteolgaTheme theme;
-  const TrendSection({super.key, required this.keywords, required this.theme});
+  final void Function(String keyword)? onKeywordTap;
+  const TrendSection({super.key, required this.keywords, required this.theme, this.onKeywordTap});
 
   @override
   State<TrendSection> createState() => _TrendSectionState();
 }
 
 class _TrendSectionState extends State<TrendSection> {
-  bool _expanded = false;
   int _page = 0;
   final PageController _pageController = PageController();
 
@@ -29,7 +28,7 @@ class _TrendSectionState extends State<TrendSection> {
   void _navigateToSearch(String keyword) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SearchScreen(initialQuery: keyword),
+        builder: (_) => SearchScreen(initialQuery: keyword, autofocus: false),
       ),
     );
   }
@@ -38,123 +37,59 @@ class _TrendSectionState extends State<TrendSection> {
   Widget build(BuildContext context) {
     final t = widget.theme;
     final keywords = widget.keywords;
-
-    if (_expanded) {
-      final pageCount = keywords.length > 10 ? 2 : 1;
-      const pageHeight = 368.0;
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-          decoration: BoxDecoration(
-            color: t.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: t.border, width: 0.5),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text('인기 차트',
-                      style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => setState(() {
-                      _expanded = false;
-                      _page = 0;
-                    }),
-                    child: Icon(Icons.keyboard_arrow_up,
-                        color: t.textTertiary, size: 20),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: pageHeight,
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: pageCount,
-                  onPageChanged: (i) => setState(() => _page = i),
-                  itemBuilder: (_, i) =>
-                      _buildTrendPage(t, keywords, i * 10),
-                ),
-              ),
-              if (pageCount > 1)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(pageCount, (i) {
-                      return Container(
-                        width: 6,
-                        height: 6,
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: i == _page
-                              ? t.textPrimary
-                              : t.textTertiary.withValues(alpha: 0.3),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
+    final pageCount = keywords.length > 10 ? 2 : 1;
+    const pageHeight = 368.0;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
-        onTap: () {
-          if (keywords.isNotEmpty) {
-            AnalyticsService.logTrendingKeywordTap(
-                keywords.first.keyword, rank: 1);
-            _navigateToSearch(keywords.first.keyword);
-          }
-        },
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: t.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: t.border, width: 0.5),
-          ),
-          child: Row(
-            children: [
-              Text('인기',
-                  style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: RollingKeywords(
-                  keywords: keywords,
-                  onTap: (keyword) {
-                    final idx = keywords.indexWhere((k) => k.keyword == keyword);
-                    AnalyticsService.logTrendingKeywordTap(
-                        keyword, rank: idx + 1);
-                    _navigateToSearch(keyword);
-                  },
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: t.border, width: 0.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('인기 차트',
+                style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: pageHeight,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: pageCount,
+                onPageChanged: (i) => setState(() => _page = i),
+                itemBuilder: (_, i) =>
+                    _buildTrendPage(t, keywords, i * 10),
+              ),
+            ),
+            if (pageCount > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(pageCount, (i) {
+                    return Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _page
+                            ? t.textPrimary
+                            : t.textTertiary.withValues(alpha: 0.3),
+                      ),
+                    );
+                  }),
                 ),
               ),
-              GestureDetector(
-                onTap: () => setState(() => _expanded = true),
-                child: Icon(Icons.keyboard_arrow_down,
-                    color: t.textTertiary, size: 20),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -170,7 +105,11 @@ class _TrendSectionState extends State<TrendSection> {
         return GestureDetector(
           onTap: () {
             AnalyticsService.logTrendingKeywordTap(kw.keyword, rank: rank);
-            _navigateToSearch(kw.keyword);
+            if (widget.onKeywordTap != null) {
+              widget.onKeywordTap!(kw.keyword);
+            } else {
+              _navigateToSearch(kw.keyword);
+            }
           },
           child: Container(
             color: Colors.transparent,

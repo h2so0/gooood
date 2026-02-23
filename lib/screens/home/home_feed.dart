@@ -9,7 +9,6 @@ import '../../widgets/product_card.dart';
 import '../../widgets/coupang_banner.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/pinned_chip_header.dart';
-import 'trend_section.dart';
 
 /// 홈 피드: 롤링 인기 검색어 + 핫딜 그리드
 class HomeFeed extends ConsumerStatefulWidget {
@@ -78,13 +77,9 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
     final currentState = _watchCurrentState(ref);
-    final trendKeywords = ref.watch(trendKeywordsProvider);
     final products = currentState.products;
 
-    // 초기 로딩: 전체 탭일 때만 전체 스켈레톤 표시
-    if (products.isEmpty && currentState.isLoading && _selectedSourceIndex == 0) {
-      return const SkeletonHomeFeed();
-    }
+    final isInitialLoading = products.isEmpty && currentState.isLoading;
 
     return Stack(
       children: [
@@ -120,6 +115,14 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                     }
                   },
                   theme: t,
+                  chipPaddingBuilder: (i, _) {
+                    final tab = sourceFilterTabs[i];
+                    final hasSymbol = tab.symbol != null && tab.colorValue != null;
+                    return EdgeInsets.only(
+                      left: hasSymbol ? 2 : 16,
+                      right: hasSymbol ? 10 : 16,
+                    );
+                  },
                   chipContentBuilder: (i, selected) {
                     final tab = sourceFilterTabs[i];
                     return Row(
@@ -127,8 +130,8 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                       children: [
                         if (tab.symbol != null && tab.colorValue != null) ...[
                           Container(
-                            width: 18,
-                            height: 18,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: Color(tab.colorValue!),
@@ -137,14 +140,14 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                             child: Text(
                               tab.symbol!,
                               style: TextStyle(
-                                fontSize: tab.symbol!.length > 1 ? 9 : 10,
+                                fontSize: tab.symbol!.length > 1 ? 10 : 12,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
                                 height: 1,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 5),
                         ],
                         AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 200),
@@ -161,72 +164,55 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                   },
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 6)),
-              SliverToBoxAdapter(
-                child: trendKeywords.when(
-                  data: (keywords) {
-                    if (keywords.isEmpty) return const SizedBox();
-                    return TrendSection(keywords: keywords, theme: t);
-                  },
-                  loading: () => const SizedBox(height: 44),
-                  error: (_, _) => const SizedBox(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: CoupangBanner(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-              if (products.isEmpty && currentState.isLoading)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                        child:
-                            CircularProgressIndicator(color: t.textTertiary)),
-                  ),
-                )
-              else if (products.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 40),
-                    child: Center(
-                      child: Text('상품이 없습니다',
-                          style:
-                              TextStyle(color: t.textTertiary, fontSize: 13)),
+              if (isInitialLoading)
+                const SliverToBoxAdapter(child: SkeletonHomeFeed())
+              else ...[
+                const SliverToBoxAdapter(child: SizedBox(height: 6)),
+                if (products.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 40),
+                      child: Center(
+                        child: Text('상품이 없습니다',
+                            style:
+                                TextStyle(color: t.textTertiary, fontSize: 13)),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverMasonryGrid.count(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childCount: BannerMixer.itemCount(products.length),
+                      itemBuilder: (context, i) {
+                        if (BannerMixer.isBanner(i)) {
+                          return const CoupangBannerCard();
+                        }
+                        final pi = BannerMixer.productIndex(i);
+                        return ProductGridCard(
+                          product: products[pi],
+                          onTap: () => widget.onTap(products[pi]),
+                        );
+                      },
                     ),
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: SliverMasonryGrid.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childCount: products.length,
-                    itemBuilder: (context, i) => ProductGridCard(
-                      product: products[i],
-                      onTap: () => widget.onTap(products[i]),
+                if (currentState.isLoading &&
+                    currentState.hasMore &&
+                    products.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(color: t.textTertiary)),
                     ),
                   ),
-                ),
-              if (currentState.isLoading &&
-                  currentState.hasMore &&
-                  products.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                        child:
-                            CircularProgressIndicator(color: t.textTertiary)),
-                  ),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+              ],
             ],
           ),
         ),

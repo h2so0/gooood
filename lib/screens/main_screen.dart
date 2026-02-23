@@ -6,11 +6,13 @@ import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
 import '../providers/keyword_wishlist_provider.dart';
+import '../providers/trend_provider.dart';
 import 'detail/product_detail_screen.dart';
 import 'search_screen.dart';
 import 'settings/settings_screen.dart';
 import 'wishlist/keyword_wishlist_screen.dart';
 import 'home/home_feed.dart';
+import 'home/rolling_keywords.dart';
 import 'category_feed.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
@@ -99,7 +101,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         children: [
           SizedBox(height: topPadding + 6),
 
-          // Search bar + settings (스크롤 시 숨김)
+          // Search bar + 인기 키워드 통합 (스크롤 시 숨김)
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOut,
@@ -129,9 +131,42 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                             Icon(Icons.search,
                                 color: t.textTertiary, size: 20),
                             const SizedBox(width: 10),
-                            Text('상품명을 검색하세요',
-                                style: TextStyle(
-                                    color: t.textTertiary, fontSize: 14)),
+                            // 인기 키워드 롤링 (모든 탭 공통)
+                            Expanded(
+                              child: Consumer(builder: (context, ref, _) {
+                                final trendAsync =
+                                    ref.watch(trendKeywordsProvider);
+                                return trendAsync.when(
+                                  data: (keywords) {
+                                    if (keywords.isEmpty) {
+                                      return Text('상품명을 검색하세요',
+                                          style: TextStyle(
+                                              color: t.textTertiary,
+                                              fontSize: 14));
+                                    }
+                                    return RollingKeywords(
+                                      keywords: keywords,
+                                      onTap: (_) {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const SearchScreen(autofocus: false),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                  loading: () => Text('상품명을 검색하세요',
+                                      style: TextStyle(
+                                          color: t.textTertiary,
+                                          fontSize: 14)),
+                                  error: (_, _) => Text('상품명을 검색하세요',
+                                      style: TextStyle(
+                                          color: t.textTertiary,
+                                          fontSize: 14)),
+                                );
+                              }),
+                            ),
                           ],
                         ),
                       ),

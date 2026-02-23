@@ -52,16 +52,30 @@ class TteolgaApp extends ConsumerStatefulWidget {
   ConsumerState<TteolgaApp> createState() => _TteolgaAppState();
 }
 
-class _TteolgaAppState extends ConsumerState<TteolgaApp> {
+class _TteolgaAppState extends ConsumerState<TteolgaApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb) {
       _initializeServices(); // fire-and-forget (비차단)
       _setupNotificationHandlers();
       _checkFirstPermission();
       _triggerDailyKeywordCollection();
     }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    ref.read(platformBrightnessProvider.notifier).state =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
   }
 
   Future<void> _initializeServices() async {

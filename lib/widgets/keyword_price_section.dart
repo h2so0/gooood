@@ -52,7 +52,8 @@ class KeywordPriceSection extends ConsumerWidget {
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => SearchScreen(initialQuery: keyword),
+                      builder: (_) => SearchScreen(
+                          initialQuery: keyword, autofocus: false),
                     ),
                   ),
                   child: Row(

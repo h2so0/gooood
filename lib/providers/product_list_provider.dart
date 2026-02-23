@@ -427,14 +427,30 @@ class SourceFilteredProductsNotifier extends PaginatedProductsNotifier {
   Future<Query> buildQuery() async {
     final col = FirebaseFirestore.instance.collection('products');
     if (_useFallback) {
-      // 인덱스 없을 때 fallback: source 필터만, 클라이언트 정렬
       return col
           .where('source', whereIn: sources)
           .limit(PaginatedProductsNotifier.pageSize);
     }
+
+    // feedOrder 기반 랜덤 오프셋 페이지네이션 (새로고침 시 순서 변경)
+    if (wrapped) {
+      return col
+          .where('source', whereIn: sources)
+          .where('feedOrder', isGreaterThanOrEqualTo: 0)
+          .where('feedOrder', isLessThan: startOffset)
+          .orderBy('feedOrder')
+          .limit(PaginatedProductsNotifier.pageSize);
+    }
+    if (startOffset > 0) {
+      return col
+          .where('source', whereIn: sources)
+          .where('feedOrder', isGreaterThanOrEqualTo: startOffset)
+          .orderBy('feedOrder')
+          .limit(PaginatedProductsNotifier.pageSize);
+    }
     return col
         .where('source', whereIn: sources)
-        .orderBy('dropRate', descending: true)
+        .orderBy('feedOrder')
         .limit(PaginatedProductsNotifier.pageSize);
   }
 
@@ -464,6 +480,26 @@ class SourceFilteredProductsNotifier extends PaginatedProductsNotifier {
         .count()
         .get();
     return countSnap.count ?? 0;
+  }
+
+  @override
+  Future<void> onEmptyFirstPage() async {
+    if (startOffset > 0) {
+      startOffset = 0;
+      await fetchPage();
+      return;
+    }
+    // feedOrder가 없으면 fallback
+    if (!_useFallback) {
+      _useFallback = true;
+      await fetchPage();
+    }
+  }
+
+  @override
+  Future<void> refresh() async {
+    _useFallback = false;
+    await super.refresh();
   }
 }
 

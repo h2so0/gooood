@@ -11,12 +11,16 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// 각 칩의 내용을 빌드. [selected] 여부에 따라 색상 등을 구분.
   final Widget Function(int index, bool selected) chipContentBuilder;
 
+  /// 칩별 패딩을 커스텀 (심볼 있는 칩은 좌측 패딩 줄이기 등)
+  final EdgeInsets Function(int index, bool selected)? chipPaddingBuilder;
+
   const PinnedChipHeaderDelegate({
     required this.itemCount,
     required this.selectedIndex,
     required this.onSelected,
     required this.theme,
     required this.chipContentBuilder,
+    this.chipPaddingBuilder,
   });
 
   @override
@@ -46,13 +50,15 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (context, i) {
             final selected = i == selectedIndex;
+            final padding = chipPaddingBuilder?.call(i, selected)
+                ?? const EdgeInsets.symmetric(horizontal: 16);
             return GestureDetector(
               onTap: () => onSelected(i),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
                 alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: padding,
                 decoration: BoxDecoration(
                   color: selected ? t.textPrimary : t.surface,
                   borderRadius: BorderRadius.circular(18),
@@ -74,5 +80,6 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant PinnedChipHeaderDelegate oldDelegate) =>
       selectedIndex != oldDelegate.selectedIndex ||
-      itemCount != oldDelegate.itemCount;
+      itemCount != oldDelegate.itemCount ||
+      theme != oldDelegate.theme;
 }

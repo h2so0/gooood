@@ -174,6 +174,22 @@ class Product {
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;
   }
 
+  /// 화면에 표시할 판매처명 (네이버 상품은 "네이버"로 통일)
+  String get displayMallName {
+    if (id.startsWith('deal_') ||
+        id.startsWith('best_') ||
+        id.startsWith('live_') ||
+        id.startsWith('promo_')) {
+      return '네이버';
+    }
+    if (id.startsWith('11st_')) return '11번가';
+    if (id.startsWith('gmkt_')) return 'G마켓';
+    if (id.startsWith('auction_')) return '옥션';
+    if (id.startsWith('lotte_')) return '롯데ON';
+    if (id.startsWith('ssg_')) return 'SSG';
+    return mallName;
+  }
+
   DealBadge? get badge {
     if (id.startsWith('deal_')) return DealBadge.todayDeal;
     if (id.startsWith('best_')) return DealBadge.best100;
@@ -213,9 +229,9 @@ class Product {
 }
 
 enum DealBadge {
-  todayDeal('오늘의 특가', '네이버 핫딜'),
-  best100('BEST 100', '네이버 BEST'),
-  shoppingLive('쇼핑라이브', '네이버 LIVE'),
+  todayDeal('오늘의 특가', '네이버'),
+  best100('BEST 100', '네이버'),
+  shoppingLive('쇼핑라이브', '네이버'),
   naverPromo('네이버 프로모션', '네이버'),
   st11('11번가', '11번가'),
   gmarket('G마켓', 'G마켓'),

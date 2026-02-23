@@ -52,37 +52,85 @@ class ThemeToggleRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(tteolgaThemeProvider);
-    final isDark = t.brightness == Brightness.dark;
+    final mode = ref.watch(themeModeProvider);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(
-              isDark
-                  ? Icons.dark_mode_outlined
-                  : Icons.light_mode_outlined,
-              color: t.textSecondary,
-              size: 20),
+          Icon(Icons.palette_outlined, color: t.textSecondary, size: 20),
           const SizedBox(width: 14),
-          Text('다크 모드',
-              style: TextStyle(color: t.textPrimary, fontSize: 15)),
+          Text('테마', style: TextStyle(color: t.textPrimary, fontSize: 15)),
           const Spacer(),
-          SizedBox(
-              height: 28,
-              child: Switch.adaptive(
-                value: isDark,
-                activeThumbColor: t.textPrimary,
-                activeTrackColor: t.textTertiary,
-                inactiveThumbColor: t.textTertiary,
-                inactiveTrackColor: t.border,
-                onChanged: (_) {
-                  ref.read(themeModeProvider.notifier).toggle();
-                  final newIsDark = !isDark;
-                  AnalyticsService.logThemeToggle(newIsDark);
-                  AnalyticsService.setThemeProperty(newIsDark);
-                },
-              )),
+          _ThemeChips(
+            theme: t,
+            selected: mode,
+            onSelected: (m) {
+              ref.read(themeModeProvider.notifier).setMode(m);
+              final isDark = m == ThemeMode.system
+                  ? t.brightness == Brightness.dark
+                  : m == ThemeMode.dark;
+              AnalyticsService.logThemeToggle(isDark);
+              AnalyticsService.setThemeProperty(isDark);
+            },
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeChips extends StatelessWidget {
+  final TteolgaTheme theme;
+  final ThemeMode selected;
+  final ValueChanged<ThemeMode> onSelected;
+
+  const _ThemeChips({
+    required this.theme,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = theme;
+    const modes = [
+      (ThemeMode.system, '시스템'),
+      (ThemeMode.light, '라이트'),
+      (ThemeMode.dark, '다크'),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: t.border.withValues(alpha: 0.5), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: modes.map((entry) {
+          final (mode, label) = entry;
+          final isSelected = selected == mode;
+          return GestureDetector(
+            onTap: () => onSelected(mode),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isSelected ? t.textPrimary : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? t.bg : t.textSecondary,
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

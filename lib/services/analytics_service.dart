@@ -53,7 +53,7 @@ class AnalyticsService {
   static Future<void> logTrendingKeywordTap(String keyword, {int? rank}) =>
       _analytics.logEvent(name: 'trending_keyword_tap', parameters: {
         'keyword': keyword,
-        if (rank != null) 'rank': rank,
+        'rank': ?rank,
       });
 
   static Future<void> logCategoryChanged(String category) =>
@@ -85,7 +85,7 @@ class AnalyticsService {
       _analytics.logEvent(name: 'target_price_set', parameters: {
         'keyword': keyword,
         'target_price': targetPrice,
-        if (currentMinPrice != null) 'current_min_price': currentMinPrice,
+        'current_min_price': ?currentMinPrice,
       });
 
   static Future<void> logTargetPriceCleared(String keyword) =>
@@ -103,7 +103,7 @@ class AnalyticsService {
 
   static Future<void> logNotificationTap(String? productId) =>
       _analytics.logEvent(name: 'notification_tap', parameters: {
-        if (productId != null) 'product_id': productId,
+        'product_id': ?productId,
       });
 
   static Future<void> logDeepLinkOpened(String productId) =>

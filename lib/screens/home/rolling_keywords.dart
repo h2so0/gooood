@@ -87,31 +87,41 @@ class _RollingKeywordsState extends ConsumerState<RollingKeywords> {
             ),
           );
         },
-        child: Row(
+        child: SizedBox(
           key: ValueKey(_currentIndex),
-          children: [
-            Text(
-              '${_currentIndex + 1}',
-              style: TextStyle(
-                color: t.textTertiary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                kw.keyword,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 13,
+          height: 20,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 22,
+                child: Text(
+                  '${_currentIndex + 1}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: t.textTertiary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
                 ),
               ),
-            ),
-            _buildMiniRankChange(t, kw.rankChange),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  kw.keyword,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 13,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              _buildMiniRankChange(t, kw.rankChange),
+            ],
+          ),
         ),
       ),
     );

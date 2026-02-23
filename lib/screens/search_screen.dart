@@ -9,10 +9,12 @@ import '../widgets/product_card.dart';
 import '../widgets/keyword_price_section.dart';
 import '../providers/providers.dart';
 import 'detail/product_detail_screen.dart';
+import 'home/trend_section.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   final String? initialQuery;
-  const SearchScreen({super.key, this.initialQuery});
+  final bool autofocus;
+  const SearchScreen({super.key, this.initialQuery, this.autofocus = true});
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -31,11 +33,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _query = widget.initialQuery!;
     }
   }
-
-  static const _fallbackPopular = [
-    '냉장고', '노트북', '가습기', '에어프라이어',
-    '블루투스스피커', '무선청소기', '원피스', '트위드자켓',
-  ];
 
   @override
   void dispose() {
@@ -94,7 +91,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: TextField(
                       controller: _controller,
                       onChanged: _onChanged,
-                      autofocus: true,
+                      autofocus: widget.autofocus,
                       style:
                           TextStyle(color: t.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
@@ -135,45 +132,34 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Widget _buildIdle(TteolgaTheme t) {
     final trends = ref.watch(trendKeywordsProvider);
-    final keywords = trends.when(
-      data: (list) =>
-          list.map((tk) => tk.keyword).toList(),
-      loading: () => _fallbackPopular,
-      error: (_, _) => _fallbackPopular,
-    );
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      children: [
-        const SizedBox(height: 16),
-        Text('인기 검색어',
-            style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: keywords.map((k) {
-            return GestureDetector(
-              onTap: () => _search(k),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: t.border, width: 0.5),
-                ),
-                child: Text(k,
-                    style:
-                        TextStyle(color: t.textSecondary, fontSize: 13)),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
+    return trends.when(
+      data: (keywords) {
+        if (keywords.isEmpty) {
+          return Center(
+            child: Text('인기 검색어가 없습니다',
+                style: TextStyle(color: t.textTertiary, fontSize: 13)),
+          );
+        }
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.zero,
+          children: [
+            const SizedBox(height: 4),
+            TrendSection(
+              keywords: keywords,
+              theme: t,
+              onKeywordTap: _search,
+            ),
+          ],
+        );
+      },
+      loading: () =>
+          Center(child: CircularProgressIndicator(color: t.textTertiary)),
+      error: (_, _) => Center(
+        child: Text('인기 검색어를 불러올 수 없습니다',
+            style: TextStyle(color: t.textTertiary, fontSize: 13)),
+      ),
     );
   }
 
