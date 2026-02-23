@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../providers/product_list_provider.dart';
 import '../widgets/product_card.dart';
 import '../constants/app_constants.dart';
+import '../widgets/pinned_chip_header.dart';
 import '../widgets/skeleton.dart';
 
 /// 카테고리 피드 (무한스크롤 + pull-to-refresh)
@@ -83,12 +84,14 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
               if (subs.isNotEmpty)
                 SliverPersistentHeader(
                   pinned: true,
-                  delegate: _SubCategoryHeaderDelegate(
-                    subs: subs,
-                    selectedSubCategory: _selectedSubCategory,
-                    onSelected: (label) {
+                  delegate: PinnedChipHeaderDelegate(
+                    itemCount: subs.length + 1,
+                    selectedIndex: _selectedSubCategory == null
+                        ? 0
+                        : subs.indexOf(_selectedSubCategory!) + 1,
+                    onSelected: (i) {
+                      final label = i == 0 ? null : subs[i - 1];
                       if (label == _selectedSubCategory) {
-                        // 같은 탭 재탭 → 상단으로
                         if (_scrollController.hasClients) {
                           _scrollController.animateTo(0,
                               duration: const Duration(milliseconds: 300),
@@ -96,9 +99,7 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                         }
                         return;
                       }
-                      setState(() {
-                        _selectedSubCategory = label;
-                      });
+                      setState(() => _selectedSubCategory = label);
                       if (_scrollController.hasClients) {
                         _scrollController.jumpTo(0);
                       }
@@ -106,6 +107,19 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                           widget.category, label);
                     },
                     theme: t,
+                    chipContentBuilder: (i, selected) {
+                      final label = i == 0 ? '전체' : subs[i - 1];
+                      return AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                          color: selected ? t.bg : t.textSecondary,
+                          letterSpacing: -0.2,
+                        ),
+                        child: Text(label),
+                      );
+                    },
                   ),
                 ),
               if (items.isEmpty && state.isLoading)
@@ -152,89 +166,4 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
       ],
     );
   }
-}
-
-class _SubCategoryHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final List<String> subs;
-  final String? selectedSubCategory;
-  final ValueChanged<String?> onSelected;
-  final TteolgaTheme theme;
-
-  const _SubCategoryHeaderDelegate({
-    required this.subs,
-    required this.selectedSubCategory,
-    required this.onSelected,
-    required this.theme,
-  });
-
-  @override
-  double get minExtent => 52;
-  @override
-  double get maxExtent => 52;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final t = theme;
-    return Container(
-      decoration: BoxDecoration(
-        color: t.bg,
-        border: Border(
-          bottom: BorderSide(
-            color: t.border.withValues(alpha: 0.3),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: SizedBox(
-        height: 52,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          itemCount: subs.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(width: 6),
-          itemBuilder: (context, i) {
-            final isAll = i == 0;
-            final label = isAll ? '전체' : subs[i - 1];
-            final selected = isAll
-                ? selectedSubCategory == null
-                : selectedSubCategory == label;
-
-            return GestureDetector(
-              onTap: () => onSelected(isAll ? null : label),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: selected ? t.textPrimary : t.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  border: selected
-                      ? null
-                      : Border.all(
-                          color: t.border.withValues(alpha: 0.5),
-                          width: 0.8),
-                ),
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 200),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: selected ? t.bg : t.textSecondary,
-                    letterSpacing: -0.2,
-                  ),
-                  child: Text(label),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _SubCategoryHeaderDelegate oldDelegate) =>
-      selectedSubCategory != oldDelegate.selectedSubCategory ||
-      subs != oldDelegate.subs;
 }

@@ -61,14 +61,6 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp> {
       _setupNotificationHandlers();
       _checkFirstPermission();
       _triggerDailyKeywordCollection();
-
-      // DEBUG: 테스트 알림 발송 (3초 후)
-      assert(() {
-        Future.delayed(const Duration(seconds: 3), () {
-          NotificationService().sendTestNotifications();
-        });
-        return true;
-      }());
     }
   }
 

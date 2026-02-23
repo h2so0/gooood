@@ -131,10 +131,4 @@ class AnalyticsService {
         name: 'wishlist_count',
         value: count.toString(),
       );
-
-  static Future<void> setNotiHotDealProperty(bool enabled) =>
-      _analytics.setUserProperty(
-        name: 'noti_hot_deal',
-        value: enabled ? 'on' : 'off',
-      );
 }

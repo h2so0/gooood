@@ -2,16 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
-import '../../models/trend_data.dart';
-import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/coupang_banner.dart';
 import '../../widgets/skeleton.dart';
-import '../search_screen.dart';
-import 'rolling_keywords.dart';
+import '../../widgets/pinned_chip_header.dart';
+import 'trend_section.dart';
 
 /// 홈 피드: 롤링 인기 검색어 + 핫딜 그리드
 class HomeFeed extends ConsumerStatefulWidget {
@@ -24,11 +22,8 @@ class HomeFeed extends ConsumerStatefulWidget {
 }
 
 class _HomeFeedState extends ConsumerState<HomeFeed> {
-  bool _trendExpanded = false;
-  int _trendPage = 0;
   int _selectedSourceIndex = 0;
   ScrollController get _scrollController => widget.scrollController;
-  final PageController _trendPageController = PageController();
 
   @override
   void initState() {
@@ -39,7 +34,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
-    _trendPageController.dispose();
     super.dispose();
   }
 
@@ -108,12 +102,11 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
             slivers: [
               SliverPersistentHeader(
                 pinned: true,
-                delegate: _SourceFilterHeaderDelegate(
-                  tabs: sourceFilterTabs,
+                delegate: PinnedChipHeaderDelegate(
+                  itemCount: sourceFilterTabs.length,
                   selectedIndex: _selectedSourceIndex,
                   onSelected: (i) {
                     if (i == _selectedSourceIndex) {
-                      // 같은 탭 재탭 → 상단으로
                       if (_scrollController.hasClients) {
                         _scrollController.animateTo(0,
                             duration: const Duration(milliseconds: 300),
@@ -127,6 +120,45 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                     }
                   },
                   theme: t,
+                  chipContentBuilder: (i, selected) {
+                    final tab = sourceFilterTabs[i];
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (tab.symbol != null && tab.colorValue != null) ...[
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(tab.colorValue!),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              tab.symbol!,
+                              style: TextStyle(
+                                fontSize: tab.symbol!.length > 1 ? 9 : 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                            color: selected ? t.bg : t.textSecondary,
+                            letterSpacing: -0.2,
+                          ),
+                          child: Text(tab.label),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 6)),
@@ -134,7 +166,7 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                 child: trendKeywords.when(
                   data: (keywords) {
                     if (keywords.isEmpty) return const SizedBox();
-                    return _buildTrendBar(t, keywords);
+                    return TrendSection(keywords: keywords, theme: t);
                   },
                   loading: () => const SizedBox(height: 44),
                   error: (_, _) => const SizedBox(),
@@ -201,332 +233,4 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
       ],
     );
   }
-
-  void _navigateToSearch(String keyword) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SearchScreen(initialQuery: keyword),
-      ),
-    );
-  }
-
-  Widget _buildRankChange(TteolgaTheme t, int? rankChange) {
-    if (rankChange == null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: t.rankUp.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          'NEW',
-          style: TextStyle(
-            color: t.rankUp,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
-    }
-    if (rankChange == 0) {
-      return Text('—',
-          style: TextStyle(color: t.textTertiary, fontSize: 12));
-    }
-    final isUp = rankChange > 0;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-          color: isUp ? t.rankUp : t.rankDown,
-          size: 20,
-        ),
-        Text(
-          '${rankChange.abs()}',
-          style: TextStyle(
-            color: isUp ? t.rankUp : t.rankDown,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTrendPage(TteolgaTheme t, List<TrendKeyword> keywords, int offset) {
-    final items = keywords.skip(offset).take(10).toList();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: items.asMap().entries.map((e) {
-        final rank = offset + e.key + 1;
-        final kw = e.value;
-        return GestureDetector(
-          onTap: () {
-            AnalyticsService.logTrendingKeywordTap(kw.keyword, rank: rank);
-            _navigateToSearch(kw.keyword);
-          },
-          child: Container(
-            color: Colors.transparent,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: Text(
-                    '$rank',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: rank <= 3 ? t.textPrimary : t.textTertiary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    kw.keyword,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: t.textPrimary, fontSize: 14),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _buildRankChange(t, kw.rankChange),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildTrendBar(TteolgaTheme t, List<TrendKeyword> keywords) {
-    if (_trendExpanded) {
-      final pageCount = keywords.length > 10 ? 2 : 1;
-      const pageHeight = 368.0;
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-          decoration: BoxDecoration(
-            color: t.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: t.border, width: 0.5),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text('인기 차트',
-                      style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => setState(() {
-                      _trendExpanded = false;
-                      _trendPage = 0;
-                    }),
-                    child: Icon(Icons.keyboard_arrow_up,
-                        color: t.textTertiary, size: 20),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: pageHeight,
-                child: PageView.builder(
-                  controller: _trendPageController,
-                  itemCount: pageCount,
-                  onPageChanged: (i) => setState(() => _trendPage = i),
-                  itemBuilder: (_, i) =>
-                      _buildTrendPage(t, keywords, i * 10),
-                ),
-              ),
-              if (pageCount > 1)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(pageCount, (i) {
-                      return Container(
-                        width: 6,
-                        height: 6,
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: i == _trendPage
-                              ? t.textPrimary
-                              : t.textTertiary.withValues(alpha: 0.3),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
-        onTap: () {
-          if (keywords.isNotEmpty) {
-            AnalyticsService.logTrendingKeywordTap(
-                keywords.first.keyword, rank: 1);
-            _navigateToSearch(keywords.first.keyword);
-          }
-        },
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: t.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: t.border, width: 0.5),
-          ),
-          child: Row(
-            children: [
-              Text('인기',
-                  style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: RollingKeywords(
-                  keywords: keywords,
-                  onTap: (keyword) {
-                    final idx = keywords.indexWhere((k) => k.keyword == keyword);
-                    AnalyticsService.logTrendingKeywordTap(
-                        keyword, rank: idx + 1);
-                    _navigateToSearch(keyword);
-                  },
-                ),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _trendExpanded = true),
-                child: Icon(Icons.keyboard_arrow_down,
-                    color: t.textTertiary, size: 20),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-}
-
-class _SourceFilterHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final List<SourceTab> tabs;
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-  final TteolgaTheme theme;
-
-  const _SourceFilterHeaderDelegate({
-    required this.tabs,
-    required this.selectedIndex,
-    required this.onSelected,
-    required this.theme,
-  });
-
-  @override
-  double get minExtent => 52;
-  @override
-  double get maxExtent => 52;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final t = theme;
-    return Container(
-      decoration: BoxDecoration(
-        color: t.bg,
-        border: Border(
-          bottom: BorderSide(
-            color: t.border.withValues(alpha: 0.3),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: SizedBox(
-        height: 52,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          itemCount: tabs.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 6),
-          itemBuilder: (context, i) {
-            final tab = tabs[i];
-            final selected = i == selectedIndex;
-
-            return GestureDetector(
-              onTap: () => onSelected(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: selected ? t.textPrimary : t.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  border: selected
-                      ? null
-                      : Border.all(
-                          color: t.border.withValues(alpha: 0.5), width: 0.8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (tab.symbol != null && tab.colorValue != null) ...[
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(tab.colorValue!),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          tab.symbol!,
-                          style: TextStyle(
-                            fontSize: tab.symbol!.length > 1 ? 9 : 10,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 200),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                        color: selected ? t.bg : t.textSecondary,
-                        letterSpacing: -0.2,
-                      ),
-                      child: Text(tab.label),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _SourceFilterHeaderDelegate oldDelegate) =>
-      selectedIndex != oldDelegate.selectedIndex;
 }
