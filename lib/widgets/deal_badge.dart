@@ -2,48 +2,58 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
 
+/// 판매처별 시그니처 색상
+class SourceColors {
+  static const naver = Color(0xFF03C75A);
+  static const st11 = Color(0xFFFF0033);
+  static const gmarket = Color(0xFF00A650);
+  static const auction = Color(0xFFE60033);
+  static const lotteon = Color(0xFFE50011);
+  static const ssg = Color(0xFFF2A900);
+
+  static Color forBadge(DealBadge badge) {
+    switch (badge) {
+      case DealBadge.todayDeal:
+      case DealBadge.best100:
+      case DealBadge.shoppingLive:
+      case DealBadge.naverPromo:
+        return naver;
+      case DealBadge.st11:
+        return st11;
+      case DealBadge.gmarket:
+        return gmarket;
+      case DealBadge.auction:
+        return auction;
+      case DealBadge.lotteon:
+        return lotteon;
+      case DealBadge.ssg:
+        return ssg;
+    }
+  }
+}
+
 class DealBadgeWidget extends ConsumerWidget {
   final DealBadge badge;
   const DealBadgeWidget({super.key, required this.badge});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = _badgeColors();
+    final brandColor = SourceColors.forBadge(badge);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: colors.$1,
+        color: brandColor,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         badge.shortLabel,
-        style: TextStyle(
-          color: colors.$2,
+        style: const TextStyle(
+          color: Colors.white,
           fontSize: 10,
           fontWeight: FontWeight.w700,
         ),
       ),
     );
-  }
-
-  (Color bg, Color text) _badgeColors() {
-    switch (badge) {
-      case DealBadge.todayDeal:
-      case DealBadge.best100:
-      case DealBadge.shoppingLive:
-      case DealBadge.naverPromo:
-        return (const Color(0xFF5A8C5A), Colors.white);
-      case DealBadge.st11:
-        return (const Color(0xFF9E5B5F), Colors.white);
-      case DealBadge.gmarket:
-        return (const Color(0xFF5B7A9E), Colors.white);
-      case DealBadge.auction:
-        return (const Color(0xFF8C7355), Colors.white);
-      case DealBadge.lotteon:
-        return (const Color(0xFFC43B3B), Colors.white);
-      case DealBadge.ssg:
-        return (const Color(0xFFE66B5B), Colors.white);
-    }
   }
 }

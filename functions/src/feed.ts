@@ -153,15 +153,20 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
     }
   }
 
-  // 만약 슬롯이 남아 있으면 제한 없이 나머지 소스에서 채움
+  // 남은 슬롯은 네이버 cap을 유지하면서 채움 (cap 초과 허용 안 함)
   if (freeSlots > 0) {
     for (const [src, list] of groups) {
       if (freeSlots <= 0) break;
       const current = allocation.get(src) || 0;
-      const canAdd = Math.min(freeSlots, list.length - current);
+      const isNaver = NAVER_SOURCES.includes(src);
+      let canAdd = Math.min(freeSlots, list.length - current);
+      if (isNaver) {
+        canAdd = Math.min(canAdd, naverMax - naverAllocated);
+      }
       if (canAdd > 0) {
         allocation.set(src, current + canAdd);
         freeSlots -= canAdd;
+        if (isNaver) naverAllocated += canAdd;
       }
     }
   }
@@ -175,36 +180,20 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
     }
   }
 
-  // 4) 라운드 로빈 삽입 (연속 동일 소스 방지)
-  const result: T[] = [];
-  const queues = new Map<string, T[]>();
-  for (const [src, list] of selected) {
-    queues.set(src, [...list]);
-  }
+  // 4) 비례 분산: 각 소스의 상품을 전체 피드에 걸쳐 균등 배치
+  const totalSelected = Array.from(selected.values()).reduce((s, l) => s + l.length, 0);
+  const positioned: { item: T; idx: number }[] = [];
 
-  let lastSource = "";
-  while (queues.size > 0) {
-    // 마지막과 다른 소스 우선, 같은 소스는 후순위
-    const candidates = Array.from(queues.entries())
-      .filter(([src]) => src !== lastSource);
-
-    let pick: [string, T[]] | undefined;
-    if (candidates.length > 0) {
-      // 남은 항목이 가장 많은 소스 선택 (균등 분산)
-      pick = candidates.reduce((a, b) => a[1].length >= b[1].length ? a : b);
-    } else {
-      // 단일 소스만 남은 경우
-      pick = Array.from(queues.entries())[0];
+  for (const list of selected.values()) {
+    if (list.length === 0) continue;
+    const step = totalSelected / list.length;
+    for (let i = 0; i < list.length; i++) {
+      positioned.push({ item: list[i], idx: i * step + Math.random() * step * 0.5 });
     }
-
-    if (!pick) break;
-    const [src, queue] = pick;
-    result.push(queue.shift()!);
-    lastSource = src;
-    if (queue.length === 0) queues.delete(src);
   }
 
-  return result;
+  positioned.sort((a, b) => a.idx - b.idx);
+  return positioned.map((p) => p.item);
 }
 
 // ──────────────────────────────────────────

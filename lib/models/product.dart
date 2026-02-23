@@ -72,13 +72,25 @@ class Product {
     'searchKeywords': searchKeywords,
   };
 
+  static int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
   factory Product.fromJson(Map<String, dynamic> json) => Product(
     id: json['id']?.toString() ?? '',
     title: json['title']?.toString() ?? '',
     link: json['link']?.toString() ?? '',
     imageUrl: json['imageUrl']?.toString() ?? '',
-    currentPrice: (json['currentPrice'] as num?)?.toInt() ?? 0,
-    previousPrice: (json['previousPrice'] as num?)?.toInt(),
+    currentPrice: _toInt(json['currentPrice']) ?? 0,
+    previousPrice: _toInt(json['previousPrice']),
     mallName: json['mallName']?.toString() ?? '',
     brand: json['brand']?.toString(),
     maker: json['maker']?.toString(),
@@ -87,10 +99,10 @@ class Product {
     category3: json['category3']?.toString(),
     subCategory: json['subCategory']?.toString(),
     productType: json['productType']?.toString() ?? '2',
-    reviewCount: (json['reviewCount'] as num?)?.toInt(),
-    purchaseCount: (json['purchaseCount'] as num?)?.toInt(),
-    reviewScore: (json['reviewScore'] as num?)?.toDouble(),
-    rank: (json['rank'] as num?)?.toInt(),
+    reviewCount: _toInt(json['reviewCount']),
+    purchaseCount: _toInt(json['purchaseCount']),
+    reviewScore: _toDouble(json['reviewScore']),
+    rank: _toInt(json['rank']),
     isDeliveryFree: json['isDeliveryFree'] == true,
     isArrivalGuarantee: json['isArrivalGuarantee'] == true,
     saleEndDate: json['saleEndDate']?.toString(),

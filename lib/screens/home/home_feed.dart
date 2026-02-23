@@ -16,7 +16,8 @@ import 'rolling_keywords.dart';
 /// 홈 피드: 롤링 인기 검색어 + 핫딜 그리드
 class HomeFeed extends ConsumerStatefulWidget {
   final void Function(Product) onTap;
-  const HomeFeed({super.key, required this.onTap});
+  final ScrollController scrollController;
+  const HomeFeed({super.key, required this.onTap, required this.scrollController});
 
   @override
   ConsumerState<HomeFeed> createState() => _HomeFeedState();
@@ -25,8 +26,8 @@ class HomeFeed extends ConsumerStatefulWidget {
 class _HomeFeedState extends ConsumerState<HomeFeed> {
   bool _trendExpanded = false;
   int _trendPage = 0;
-  bool _showScrollTop = false;
-  final ScrollController _scrollController = ScrollController();
+  int _selectedSourceIndex = 0;
+  ScrollController get _scrollController => widget.scrollController;
   final PageController _trendPageController = PageController();
 
   @override
@@ -38,7 +39,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
     _trendPageController.dispose();
     super.dispose();
   }
@@ -46,23 +46,49 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 500) {
-      ref.read(hotProductsProvider.notifier).fetchNextPage();
+      _fetchNextPageCurrent();
     }
-    final show = _scrollController.position.pixels > 800;
-    if (show != _showScrollTop) {
-      setState(() => _showScrollTop = show);
+  }
+
+  ProductListState _watchCurrentState(WidgetRef ref) {
+    final tab = sourceFilterTabs[_selectedSourceIndex];
+    if (tab.sourceKey == null) {
+      return ref.watch(hotProductsProvider);
+    }
+    return ref.watch(sourceFilteredProductsProvider(tab.sourceKey!));
+  }
+
+  Future<void> _refreshCurrent() async {
+    final tab = sourceFilterTabs[_selectedSourceIndex];
+    if (tab.sourceKey == null) {
+      await ref.read(hotProductsProvider.notifier).refresh();
+    } else {
+      await ref
+          .read(sourceFilteredProductsProvider(tab.sourceKey!).notifier)
+          .refresh();
+    }
+  }
+
+  void _fetchNextPageCurrent() {
+    final tab = sourceFilterTabs[_selectedSourceIndex];
+    if (tab.sourceKey == null) {
+      ref.read(hotProductsProvider.notifier).fetchNextPage();
+    } else {
+      ref
+          .read(sourceFilteredProductsProvider(tab.sourceKey!).notifier)
+          .fetchNextPage();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
-    final hotState = ref.watch(hotProductsProvider);
+    final currentState = _watchCurrentState(ref);
     final trendKeywords = ref.watch(trendKeywordsProvider);
-    final products = hotState.products;
+    final products = currentState.products;
 
-    // 초기 로딩: 전체 스켈레톤 표시
-    if (products.isEmpty && hotState.isLoading) {
+    // 초기 로딩: 전체 탭일 때만 전체 스켈레톤 표시
+    if (products.isEmpty && currentState.isLoading && _selectedSourceIndex == 0) {
       return const SkeletonHomeFeed();
     }
 
@@ -72,7 +98,7 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
           color: t.textPrimary,
           backgroundColor: t.card,
           onRefresh: () async {
-            await ref.read(hotProductsProvider.notifier).refresh();
+            await _refreshCurrent();
             ref.invalidate(trendKeywordsProvider);
           },
           child: CustomScrollView(
@@ -80,6 +106,29 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
             slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SourceFilterHeaderDelegate(
+                  tabs: sourceFilterTabs,
+                  selectedIndex: _selectedSourceIndex,
+                  onSelected: (i) {
+                    if (i == _selectedSourceIndex) {
+                      // 같은 탭 재탭 → 상단으로
+                      if (_scrollController.hasClients) {
+                        _scrollController.animateTo(0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut);
+                      }
+                      return;
+                    }
+                    setState(() => _selectedSourceIndex = i);
+                    if (_scrollController.hasClients) {
+                      _scrollController.jumpTo(0);
+                    }
+                  },
+                  theme: t,
+                ),
+              ),
               const SliverToBoxAdapter(child: SizedBox(height: 6)),
               SliverToBoxAdapter(
                 child: trendKeywords.when(
@@ -92,22 +141,32 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: CoupangBanner(),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _sectionTitle(t, '오늘의 핫딜')),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              if (products.isEmpty)
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              if (products.isEmpty && currentState.isLoading)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text('핫딜 상품을 불러오는 중...',
-                        style:
-                            TextStyle(color: t.textTertiary, fontSize: 13)),
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                        child:
+                            CircularProgressIndicator(color: t.textTertiary)),
+                  ),
+                )
+              else if (products.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 40),
+                    child: Center(
+                      child: Text('상품이 없습니다',
+                          style:
+                              TextStyle(color: t.textTertiary, fontSize: 13)),
+                    ),
                   ),
                 )
               else
@@ -124,7 +183,9 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                     ),
                   ),
                 ),
-              if (hotState.isLoading && hotState.hasMore && products.isNotEmpty)
+              if (currentState.isLoading &&
+                  currentState.hasMore &&
+                  products.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -137,39 +198,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
             ],
           ),
         ),
-        if (_showScrollTop)
-          Positioned(
-            right: 16,
-            bottom: 16 + MediaQuery.of(context).padding.bottom,
-            child: GestureDetector(
-              onTap: () => _scrollController.animateTo(
-                0,
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOut,
-              ),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: t.card,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: t.border, width: 0.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.keyboard_arrow_up,
-                  color: t.textSecondary,
-                  size: 24,
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -395,17 +423,110 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
     );
   }
 
-  Widget _sectionTitle(TteolgaTheme t, String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: t.textPrimary,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
+}
+
+class _SourceFilterHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final List<SourceTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final TteolgaTheme theme;
+
+  const _SourceFilterHeaderDelegate({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.theme,
+  });
+
+  @override
+  double get minExtent => 52;
+  @override
+  double get maxExtent => 52;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final t = theme;
+    return Container(
+      decoration: BoxDecoration(
+        color: t.bg,
+        border: Border(
+          bottom: BorderSide(
+            color: t.border.withValues(alpha: 0.3),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: SizedBox(
+        height: 52,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          itemCount: tabs.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
+          itemBuilder: (context, i) {
+            final tab = tabs[i];
+            final selected = i == selectedIndex;
+
+            return GestureDetector(
+              onTap: () => onSelected(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: selected ? t.textPrimary : t.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: selected
+                      ? null
+                      : Border.all(
+                          color: t.border.withValues(alpha: 0.5), width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (tab.symbol != null && tab.colorValue != null) ...[
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(tab.colorValue!),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          tab.symbol!,
+                          style: TextStyle(
+                            fontSize: tab.symbol!.length > 1 ? 9 : 10,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        color: selected ? t.bg : t.textSecondary,
+                        letterSpacing: -0.2,
+                      ),
+                      child: Text(tab.label),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
+
+  @override
+  bool shouldRebuild(covariant _SourceFilterHeaderDelegate oldDelegate) =>
+      selectedIndex != oldDelegate.selectedIndex;
 }

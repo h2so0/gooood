@@ -24,7 +24,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   int _tabIndex = 0;
   final Set<int> _visitedTabs = {0}; // 홈만 먼저 빌드
   bool _isOffline = false;
+  bool _showSearchBar = true;
+  double _lastScrollOffset = 0;
   late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
+  late final List<ScrollController> _scrollControllers;
 
   static const _tabs = [
     '홈',
@@ -37,9 +40,29 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     '출산/육아',
   ];
 
+  void _onFeedScroll() {
+    final sc = _scrollControllers[_tabIndex];
+    if (!sc.hasClients) return;
+    final offset = sc.offset;
+    final delta = offset - _lastScrollOffset;
+    _lastScrollOffset = offset;
+
+    if (offset <= 0) {
+      if (!_showSearchBar) setState(() => _showSearchBar = true);
+    } else if (delta > 4 && _showSearchBar) {
+      setState(() => _showSearchBar = false);
+    } else if (delta < -4 && !_showSearchBar) {
+      setState(() => _showSearchBar = true);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _scrollControllers = List.generate(_tabs.length, (_) => ScrollController());
+    for (final sc in _scrollControllers) {
+      sc.addListener(_onFeedScroll);
+    }
     // 홈 렌더링 후 1초 뒤 나머지 카테고리 프리페치
     Future.delayed(const Duration(seconds: 1), () {
       if (!mounted) return;
@@ -58,6 +81,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void dispose() {
     _connectivitySub.cancel();
+    for (final c in _scrollControllers) {
+      c.removeListener(_onFeedScroll);
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -70,122 +97,128 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       backgroundColor: t.bg,
       body: Column(
         children: [
-          SizedBox(height: topPadding + 10),
+          SizedBox(height: topPadding + 6),
 
-          // Search bar + settings
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
+          // Search bar + settings (스크롤 시 숨김)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            height: _showSearchBar ? 52 : 0,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const SearchScreen()),
+                      ),
+                      child: Container(
+                        height: 42,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: t.card,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: t.border, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.search,
+                                color: t.textTertiary, size: 20),
+                            const SizedBox(width: 10),
+                            Text('상품명을 검색하세요',
+                                style: TextStyle(
+                                    color: t.textTertiary, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // 찜 버튼
+                  GestureDetector(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                          builder: (_) => const SearchScreen()),
+                          builder: (_) => const KeywordWishlistScreen()),
                     ),
                     child: Container(
+                      width: 42,
                       height: 42,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: t.card,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: t.border, width: 0.5),
                       ),
-                      child: Row(
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          Icon(Icons.search,
+                          Icon(Icons.bookmark_outline,
                               color: t.textTertiary, size: 20),
-                          const SizedBox(width: 10),
-                          Text('상품명을 검색하세요',
-                              style: TextStyle(
-                                  color: t.textTertiary, fontSize: 14)),
+                          // 뱃지
+                          Consumer(builder: (context, ref, _) {
+                            final count =
+                                ref.watch(keywordWishlistProvider).length;
+                            if (count == 0) return const SizedBox.shrink();
+                            final label = count > 9 ? '9+' : '$count';
+                            return Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: t.drop,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  label,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.1),
+                                ),
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // 찜 버튼
-                GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                        builder: (_) => const KeywordWishlistScreen()),
-                  ),
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: t.card,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: t.border, width: 0.5),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen()),
                     ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(Icons.bookmark_outline,
-                            color: t.textTertiary, size: 20),
-                        // 뱃지
-                        Consumer(builder: (context, ref, _) {
-                          final count =
-                              ref.watch(keywordWishlistProvider).length;
-                          if (count == 0) return const SizedBox.shrink();
-                          final label = count > 9 ? '9+' : '$count';
-                          return Positioned(
-                            top: 4,
-                            right: 4,
-                            child: Container(
-                              constraints: const BoxConstraints(
-                                minWidth: 16,
-                                minHeight: 16,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: t.drop,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                label,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.1),
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: t.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: t.border, width: 0.5),
+                      ),
+                      child: Icon(Icons.settings_outlined,
+                          color: t.textTertiary, size: 20),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                        builder: (_) => const SettingsScreen()),
-                  ),
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: t.card,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: t.border, width: 0.5),
-                    ),
-                    child: Icon(Icons.settings_outlined,
-                        color: t.textTertiary, size: 20),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 12),
 
-          // Category tabs
+          // Category tabs — underline style
           SizedBox(
-            height: 36,
+            height: 40,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -193,39 +226,49 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               itemCount: _tabs.length,
               itemBuilder: (context, i) {
                 final selected = i == _tabIndex;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _tabIndex = i;
-                        _visitedTabs.add(i);
-                      });
-                      AnalyticsService.logCategoryChanged(_tabs[i]);
-                    },
-                    child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? t.textPrimary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(18),
-                        border: selected
-                            ? null
-                            : Border.all(color: t.border, width: 0.5),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        _tabs[i],
-                        style: TextStyle(
-                          color:
-                              selected ? t.bg : t.textSecondary,
-                          fontSize: 13,
-                          fontWeight: selected
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
+                return GestureDetector(
+                  onTap: () {
+                    if (i == _tabIndex) return;
+                    final sc = _scrollControllers[i];
+                    _lastScrollOffset = sc.hasClients ? sc.offset : 0;
+                    setState(() {
+                      _tabIndex = i;
+                      _visitedTabs.add(i);
+                      _showSearchBar = true;
+                    });
+                    AnalyticsService.logCategoryChanged(_tabs[i]);
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: IntrinsicWidth(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(
+                            _tabs[i],
+                            style: TextStyle(
+                              color: selected
+                                  ? t.textPrimary
+                                  : t.textTertiary,
+                              fontSize: 14,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: selected ? 2 : 0,
+                            decoration: BoxDecoration(
+                              color: t.textPrimary,
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -233,7 +276,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               },
             ),
           ),
-          const SizedBox(height: 8),
 
           // 오프라인 배너
           if (_isOffline)
@@ -261,10 +303,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                   return const SizedBox.shrink();
                 }
                 return i == 0
-                    ? HomeFeed(onTap: _openDetail)
+                    ? HomeFeed(
+                        onTap: _openDetail,
+                        scrollController: _scrollControllers[i],
+                      )
                     : CategoryFeed(
                         category: _tabs[i],
                         onTap: _openDetail,
+                        scrollController: _scrollControllers[i],
                       );
               }),
             ),

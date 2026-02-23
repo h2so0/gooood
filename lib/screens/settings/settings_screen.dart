@@ -34,7 +34,7 @@ class SettingsScreen extends ConsumerWidget {
           ScreenHeader(theme: t, title: '설정'),
           const SizedBox(height: 16),
 
-          const CoupangBanner(),
+          CoupangBanner(),
           const SizedBox(height: 20),
 
           // 일반

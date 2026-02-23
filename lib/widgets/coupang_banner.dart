@@ -1,69 +1,80 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/url_launcher_helper.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 쿠팡 파트너스 배너 (홈/설정 삽입용)
-class CoupangBanner extends StatelessWidget {
+/// 쿠팡 파트너스 배너 (홈 피드 삽입용, 슬림 스타일)
+class CoupangBanner extends ConsumerWidget {
   const CoupangBanner({super.key});
 
-  static const _coupangRed = Color(0xFFE64B3C);
   static const _coupangUrl = 'https://link.coupang.com/a/dJQwlK';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(tteolgaThemeProvider);
+
     return GestureDetector(
-        onTap: _openCoupang,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: _coupangRed,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      onTap: _openCoupang,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: t.border, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            // 쿠팡 로고 심볼
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE64B3C),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'C',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.shopping_cart, color: Colors.white, size: 22),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      '쿠팡 특가 모아보기',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  Text(
+                    '쿠팡 골드박스 특가',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      '바로가기 >',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '파트너스 활동으로 수수료를 제공받습니다',
+                    style: TextStyle(
+                      color: t.textTertiary,
+                      fontSize: 10,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                '이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 11,
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: t.textTertiary,
+              size: 20,
+            ),
+          ],
         ),
+      ),
     );
   }
 

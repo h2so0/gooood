@@ -164,6 +164,7 @@ abstract class PaginatedProductsNotifier
 
 class HotProductsNotifier extends PaginatedProductsNotifier {
   bool _useFeedOrder = true;
+  bool _isFirstFetch = true;
   static const _cacheKey = 'hot_first_page';
 
   HotProductsNotifier() {
@@ -233,11 +234,44 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
 
   @override
   Future<void> fetchPage() async {
-    final wasEmpty = state.products.isEmpty;
-    await super.fetchPage();
-    if (wasEmpty && state.products.isNotEmpty) {
-      _saveCacheIfFirstPage();
+    if (_isFirstFetch) {
+      // 첫 번째 Firestore 응답: SWR 캐시를 교체 (dedup 방지)
+      _isFirstFetch = false;
+      state = state.copyWith(isLoading: true);
+
+      try {
+        Query query = await buildQuery();
+        final snapshot = await query.get();
+        final now = DateTime.now();
+        final page = snapshot.docs
+            .map((doc) => Product.fromJson(doc.data() as Map<String, dynamic>))
+            .where((p) {
+              if (p.saleEndDate == null) return true;
+              try { return DateTime.parse(p.saleEndDate!).isAfter(now); }
+              catch (_) { return true; }
+            })
+            .toList();
+
+        if (page.isEmpty) {
+          await onEmptyFirstPage();
+          return;
+        }
+
+        state = ProductListState(
+          products: page,
+          isLoading: false,
+          hasMore: snapshot.docs.length >= PaginatedProductsNotifier.pageSize,
+          lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+        );
+        _saveCacheIfFirstPage();
+      } catch (e) {
+        debugPrint('[$logTag] first fetchPage error: $e');
+        state = state.copyWith(isLoading: false);
+      }
+      return;
     }
+
+    await super.fetchPage();
   }
 
   @override
@@ -267,6 +301,7 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   @override
   Future<void> refresh() async {
     _useFeedOrder = true;
+    _isFirstFetch = true;
     await super.refresh();
     _saveCacheIfFirstPage();
   }
@@ -377,11 +412,106 @@ class CategoryProductsNotifier extends PaginatedProductsNotifier {
   }
 }
 
+// ── SourceFilteredProductsNotifier ──
+
+class SourceFilteredProductsNotifier extends PaginatedProductsNotifier {
+  final List<String> sources;
+  bool _useFallback = false;
+
+  SourceFilteredProductsNotifier(this.sources);
+
+  @override
+  String get logTag => 'SourceFiltered(${sources.join(",")})';
+
+  @override
+  Future<Query> buildQuery() async {
+    final col = FirebaseFirestore.instance.collection('products');
+    if (_useFallback) {
+      // 인덱스 없을 때 fallback: source 필터만, 클라이언트 정렬
+      return col
+          .where('source', whereIn: sources)
+          .limit(PaginatedProductsNotifier.pageSize);
+    }
+    return col
+        .where('source', whereIn: sources)
+        .orderBy('dropRate', descending: true)
+        .limit(PaginatedProductsNotifier.pageSize);
+  }
+
+  @override
+  Future<void> fetchPage() async {
+    try {
+      await super.fetchPage();
+    } catch (e) {
+      if (!_useFallback &&
+          (e.toString().contains('failed-precondition') ||
+              e.toString().contains('requires an index'))) {
+        debugPrint('[$logTag] index missing, using fallback');
+        _useFallback = true;
+        state = state.copyWith(isLoading: false);
+        await super.fetchPage();
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> countTotal() async {
+    final countSnap = await FirebaseFirestore.instance
+        .collection('products')
+        .where('source', whereIn: sources)
+        .count()
+        .get();
+    return countSnap.count ?? 0;
+  }
+}
+
+// ── Source filter tab definitions ──
+
+class SourceTab {
+  final String label;
+  /// Comma-joined source keys (used as Riverpod family key).
+  /// null = 전체 (uses hotProductsProvider instead).
+  final String? sourceKey;
+  final List<String>? sources;
+  /// 판매처 시그니처 색상. null = 전체 탭
+  final int? colorValue;
+  /// 탭에 표시할 심볼 텍스트 (예: "N", "11", "G")
+  final String? symbol;
+  const SourceTab(this.label, this.sourceKey, this.sources, {this.colorValue, this.symbol});
+}
+
+const sourceFilterTabs = <SourceTab>[
+  SourceTab('전체', null, null),
+  SourceTab('네이버', 'best100,todayDeal,shoppingLive,naverPromo',
+      ['best100', 'todayDeal', 'shoppingLive', 'naverPromo'],
+      colorValue: 0xFF03C75A, symbol: 'N'),
+  SourceTab('11번가', '11st', ['11st'],
+      colorValue: 0xFFFF0033, symbol: '11'),
+  SourceTab('G마켓', 'gmarket', ['gmarket'],
+      colorValue: 0xFF00A650, symbol: 'G'),
+  SourceTab('옥션', 'auction', ['auction'],
+      colorValue: 0xFFE60033, symbol: 'A'),
+  SourceTab('롯데ON', 'lotteon', ['lotteon'],
+      colorValue: 0xFFE50011, symbol: 'L'),
+  SourceTab('SSG', 'ssg', ['ssg'],
+      colorValue: 0xFFF2A900, symbol: 'S'),
+];
+
 // ── Providers ──
 
 final hotProductsProvider =
     StateNotifierProvider<HotProductsNotifier, ProductListState>(
   (ref) => HotProductsNotifier(),
+);
+
+final sourceFilteredProductsProvider = StateNotifierProvider.autoDispose
+    .family<SourceFilteredProductsNotifier, ProductListState, String>(
+  (ref, key) {
+    final sources = key.split(',');
+    return SourceFilteredProductsNotifier(sources);
+  },
 );
 
 final categoryProductsProvider =

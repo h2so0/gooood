@@ -6,12 +6,9 @@ Future<void> launchProductUrl(String url) async {
   if (url.isEmpty) return;
 
   final uri = Uri.parse(url);
-  final scheme = _appScheme(uri.host);
+  final appUri = _buildAppUri(uri, url);
 
-  if (scheme != null) {
-    final appUri = Uri.parse(
-      '$scheme://inappbrowser?url=${Uri.encodeComponent(url)}',
-    );
+  if (appUri != null) {
     try {
       final opened = await launchUrl(appUri);
       if (opened) return;
@@ -25,12 +22,45 @@ Future<void> launchProductUrl(String url) async {
   }
 }
 
-String? _appScheme(String host) {
+Uri? _buildAppUri(Uri uri, String url) {
+  final host = uri.host;
+
+  // 네이버
   if (host.endsWith('naver.com') || host.endsWith('naver.net')) {
-    return 'naversearchapp';
+    return Uri.parse(
+      'naversearchapp://inappbrowser?url=${Uri.encodeComponent(url)}',
+    );
   }
-  if (host.endsWith('11st.co.kr')) return 'elevenstapp';
-  if (host.endsWith('gmarket.co.kr')) return 'gmarket';
-  if (host.endsWith('auction.co.kr')) return 'auction';
+  // 11번가
+  if (host.endsWith('11st.co.kr')) {
+    return Uri.parse(
+      'elevenstapp://inappbrowser?url=${Uri.encodeComponent(url)}',
+    );
+  }
+  // G마켓
+  if (host.endsWith('gmarket.co.kr')) {
+    return Uri.parse(
+      'gmarket://inappbrowser?url=${Uri.encodeComponent(url)}',
+    );
+  }
+  // 옥션
+  if (host.endsWith('auction.co.kr')) {
+    return Uri.parse(
+      'auction://inappbrowser?url=${Uri.encodeComponent(url)}',
+    );
+  }
+  // 롯데ON
+  if (host.endsWith('lotteon.com')) {
+    return Uri.parse(
+      'lotteon://product?url=${Uri.encodeComponent(url)}',
+    );
+  }
+  // SSG
+  if (host.endsWith('ssg.com')) {
+    return Uri.parse(
+      'ssg://product?url=${Uri.encodeComponent(url)}',
+    );
+  }
+
   return null;
 }

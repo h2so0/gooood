@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import fetch from "node-fetch";
 
 import { ProductJson, PopularKeywordJson } from "./types";
@@ -52,7 +53,26 @@ import { fetchLotteonDeals } from "./fetchers/lotteon";
 import { fetchSsgDeals } from "./fetchers/ssg";
 import { refreshFeedData } from "./feed";
 
-admin.initializeApp();
+// SA key secret for FCM authentication in Gen 2 Cloud Functions
+const ADMIN_SA_KEY = defineSecret("ADMIN_SA_KEY");
+
+// Initialize with explicit credential if SA key is available (fixes FCM auth in Cloud Run)
+function initAdmin() {
+  if (admin.apps.length > 0) return;
+  const saKeyJson = process.env.ADMIN_SA_KEY;
+  if (saKeyJson) {
+    try {
+      const sa = JSON.parse(saKeyJson);
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      return;
+    } catch (e) {
+      console.warn("[initAdmin] Failed to parse SA key, falling back to ADC:", e);
+    }
+  }
+  admin.initializeApp();
+}
+
+initAdmin();
 
 // ── Shared alert helper ──
 
@@ -134,9 +154,10 @@ export const syncDeals = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
-    secrets: ["GEMINI_API_KEY", "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
+    secrets: ["GEMINI_API_KEY", "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET", ADMIN_SA_KEY],
   },
   async () => {
+    initAdmin();
     const products = await fetchTodayDeals();
     console.log(`Fetched ${products.length} today deals`);
 
@@ -330,8 +351,10 @@ export const dailyBest = onSchedule(
     schedule: "0 9 * * *",
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
+    secrets: [ADMIN_SA_KEY],
   },
   async () => {
+    initAdmin();
     const snap = await admin
       .firestore()
       .collection("products")
@@ -383,8 +406,10 @@ export const sendCategoryAlerts = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
+    secrets: [ADMIN_SA_KEY],
   },
   async () => {
+    initAdmin();
     const eligible = await loadEligibleProfiles({
       field: "enableCategoryAlert",
       rateLimitField: "lastCategoryAlertSentAt",
@@ -447,8 +472,10 @@ export const sendSmartDigests = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
+    secrets: [ADMIN_SA_KEY],
   },
   async () => {
+    initAdmin();
     const eligible = await loadEligibleProfiles({
       field: "enableSmartDigest",
       rateLimitField: "lastDigestSentAt",
@@ -517,9 +544,10 @@ export const checkKeywordPriceAlerts = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 300,
-    secrets: ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
+    secrets: ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET", ADMIN_SA_KEY],
   },
   async () => {
+    initAdmin();
     await checkKeywordPriceAlertsImpl();
   }
 );
@@ -558,9 +586,10 @@ export const manualSync = onRequest(
   {
     region: "asia-northeast3",
     timeoutSeconds: 540,
-    secrets: ["GEMINI_API_KEY"],
+    secrets: ["GEMINI_API_KEY", ADMIN_SA_KEY],
   },
   async (_req, res) => {
+    initAdmin();
     const results: string[] = [];
 
     for (const task of SYNC_TASKS) {
@@ -630,6 +659,54 @@ export const manualSync = onRequest(
       results.push("refreshFeed: OK");
     } catch (e) {
       results.push(`refreshFeed: ERROR ${e}`);
+    }
+
+    res.json({ ok: true, results });
+  }
+);
+
+// FCM 테스트 엔드포인트 — 배포 후 알림 동작 확인용
+export const testFcm = onRequest(
+  {
+    region: "asia-northeast3",
+    secrets: [ADMIN_SA_KEY],
+  },
+  async (_req, res) => {
+    initAdmin();
+    const results: string[] = [];
+
+    // 1. Check admin credential status
+    try {
+      const app = admin.app();
+      results.push(`Admin app name: ${app.name}`);
+      results.push(`Admin app projectId: ${app.options.projectId || "auto"}`);
+    } catch (e) {
+      results.push(`Admin app error: ${e}`);
+    }
+
+    // 2. Test Firestore (should work)
+    try {
+      const snap = await admin.firestore().collection("device_profiles").limit(1).get();
+      results.push(`Firestore OK: ${snap.size} profile(s) found`);
+      if (!snap.empty) {
+        const profile = snap.docs[0].data();
+        results.push(`  Token hash: ${(profile.tokenHash as string || "").substring(0, 8)}...`);
+        results.push(`  Has FCM token: ${!!profile.fcmToken}`);
+      }
+    } catch (e) {
+      results.push(`Firestore ERROR: ${e}`);
+    }
+
+    // 3. Test FCM topic send
+    try {
+      await admin.messaging().send({
+        topic: "test_fcm_check",
+        notification: { title: "FCM Test", body: "Test from testFcm endpoint" },
+      }, true); // dryRun = true
+      results.push("FCM dryRun OK: messaging auth works!");
+    } catch (e: any) {
+      results.push(`FCM dryRun ERROR: ${e?.message || e}`);
+      results.push(`  Error code: ${e?.code || e?.errorInfo?.code || "?"}`);
     }
 
     res.json({ ok: true, results });

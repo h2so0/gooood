@@ -49,8 +49,8 @@ export function extractRawId(id: string): string | null {
   for (const prefix of ["deal_", "best_", "live_", "promo_"]) {
     if (id.startsWith(prefix)) return `naver_${id.substring(prefix.length)}`;
   }
-  if (id.startsWith("gmkt_")) return `gianex_${id.substring(5)}`;
-  if (id.startsWith("auction_")) return `gianex_${id.substring(8)}`;
+  if (id.startsWith("gmkt_")) return `gmkt_${id.substring(5)}`;
+  if (id.startsWith("auction_")) return `auction_${id.substring(8)}`;
   if (id.startsWith("lotte_")) return id; // 롯데ON: ID 그대로 사용
   if (id.startsWith("ssg_")) return id;   // SSG: ID 그대로 사용
   return null;
