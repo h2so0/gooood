@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoodDeal (굿딜) is a Korean shopping deal aggregation and price tracking app. It collects deals from multiple sources (Naver Shopping, 11번가, G마켓, 옥션), tracks price changes, and sends push notifications for price drops. Flutter frontend with Firebase backend (Firestore + Cloud Functions).
+GoodDeal (굿딜) is a Korean shopping deal aggregation and price tracking app. It collects deals from multiple sources (Naver Shopping, 11번가, G마켓, 옥션, Lotteon, SSG), tracks price changes, and sends push notifications for price drops. Flutter frontend with Firebase backend (Firestore + Cloud Functions).
 
 ## Common Commands
 
@@ -58,7 +58,9 @@ TypeScript Cloud Functions on Node.js 22:
 - **`feed.ts`** — `syncDeals` runs every 15 min, fetching deals from all sources and writing to Firestore.
 - **`fetchers/naver.ts`** — Naver Shopping API (today's deals, best 100, shopping live, promotions).
 - **`fetchers/external.ts`** — 11번가, G마켓, 옥션 scrapers.
-- **`notifications.ts`** — FCM push notification logic with quiet hours support.
+- **`fetchers/lotteon.ts`** — Lotteon API.
+- **`fetchers/ssg.ts`** — SSG API.
+- **`notifications.ts`** — FCM push notification logic with quiet hours (11pm–7am), rate limiting, topic-based filtering.
 - **`classify.ts`** — Gemini AI-based sub-category classification.
 - **`config.ts`** — Category definitions, rate limits, timing constants.
 
@@ -71,7 +73,17 @@ TypeScript Cloud Functions on Node.js 22:
 
 ### Key Patterns
 
-- **Product ID prefixes** indicate source: `deal_*` (today's deal), `best_*` (best 100), `live_*` (shopping live), `promo_*` (promotions), `11st_*`, `gmkt_*`, `auction_*` (external retailers)
+- **Product ID prefixes** indicate source: `deal_*` (today's deal), `best_*` (best 100), `live_*` (shopping live), `promo_*` (promotions), `11st_*`, `gmkt_*`, `auction_*`, `lotteon_*`, `ssg_*`
 - **Deep linking** via `https://gooddeal-app.web.app/product/{productId}` with native app fallbacks (Naver, 11번가, etc.)
 - **Keyword wishlist** allows users to track up to 20 keywords with target price alerts and daily price snapshots
-- **In-memory caching** (`MemoryCache`) for API responses in the Flutter app
+- **Balanced shuffle** (`balancedShuffle`/`balancedShuffleWithQuota` in `feed.ts`) distributes products proportionally by source with min/max quotas
+- **In-memory caching** (`MemoryCache`) for API responses in the Flutter app; Hive-based SWR (stale-while-revalidate) for feed cache
+- **Device profile sync** (`device_profile_sync.dart`) writes FCM token, platform, and notification preferences to Firestore `device_profiles` collection
+
+### Firestore Collections
+
+- **`products`** — Synced by Cloud Functions. App reads only.
+- **`cache`** — Server-managed cached data (popular keywords, rankings). App reads only.
+- **`keyword_snapshots/{keyword}/{date}`** — Price history for user watchlists. App reads/writes.
+- **`device_profiles/{tokenHash}`** — Device info and notification preferences. App writes, Cloud Functions read.
+- **`sent_notifications`** — Notification send history for rate limiting. Cloud Functions only.

@@ -323,6 +323,37 @@ class NotificationService {
     _onNotificationTap?.call({'productId': productId});
   }
 
+  // ── 중복 방지 알림 저장 (탭 핸들러에서 호출) ──
+
+  /// 백그라운드/종료 상태에서 알림 탭 시 히스토리에 저장.
+  /// 최근 10개 중 동일 title+type이 5분 이내에 존재하면 skip (배경 핸들러 중복 방지).
+  Future<void> saveToHistoryIfNotDuplicate(RemoteMessage message) async {
+    if (kIsWeb) return;
+
+    final notification = message.notification;
+    final data = message.data;
+    final title = notification?.title ?? data['title'] ?? '';
+    final type = data['type'] ?? 'general';
+    final now = DateTime.now();
+
+    final box = Hive.box<String>(_historyBoxName);
+    // 최근 10개 레코드에서 중복 체크
+    final recentCount = box.length < 10 ? box.length : 10;
+    for (int i = box.length - 1; i >= box.length - recentCount; i--) {
+      final raw = box.getAt(i);
+      if (raw == null) continue;
+      final record = jsonDecode(raw) as Map<String, dynamic>;
+      if (record['title'] == title && record['type'] == type) {
+        final ts = DateTime.tryParse(record['timestamp'] ?? '');
+        if (ts != null && now.difference(ts).inMinutes < 5) {
+          return; // 중복 — skip
+        }
+      }
+    }
+
+    await _saveHistoryFromMessage(message);
+  }
+
   // ── 알림 내역 조회/관리 ──
 
   List<Map<String, dynamic>> getHistory() {

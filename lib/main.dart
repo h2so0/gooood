@@ -126,11 +126,15 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
   void _setupNotificationHandlers() {
     // 앱이 종료 상태에서 알림 탭으로 열렸을 때
     FirebaseMessaging.instance.getInitialMessage().then((message) {
-      if (message != null) _handleNotificationTap(message.data);
+      if (message != null) {
+        NotificationService().saveToHistoryIfNotDuplicate(message);
+        _handleNotificationTap(message.data);
+      }
     });
 
     // 앱이 백그라운드 상태에서 알림 탭했을 때
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      NotificationService().saveToHistoryIfNotDuplicate(message);
       _handleNotificationTap(message.data);
     });
 

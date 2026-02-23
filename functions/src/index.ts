@@ -85,6 +85,9 @@ async function sendTimeBoundAlert(
 ): Promise<void> {
   if (candidates.length === 0) return;
 
+  // 기본 알림금지시간(22:00-08:00 KST) 동안 토픽 알림 차단
+  if (isQuietHour(22, 8)) return;
+
   const db = admin.firestore();
   const sentRef = db.collection("sent_notifications");
 

@@ -47,11 +47,11 @@ export const FIRESTORE_BATCH_LIMIT = 500;
 export const CLEANUP_BATCH_LIMIT = 200;
 
 export const RATE_LIMIT = {
-  PRICE_DROP: 3_600_000,       // 1 hour
-  CATEGORY_ALERT: 7_200_000,   // 2 hours
+  PRICE_DROP: 14_400_000,      // 4 hours
+  CATEGORY_ALERT: 14_400_000,  // 4 hours
   SMART_DIGEST: 86_400_000,    // 1 day
-  HOT_DEAL: 3_600_000,         // 1 hour
-  SALE_END: 3_600_000,         // 1 hour
+  HOT_DEAL: 14_400_000,        // 4 hours
+  SALE_END: 14_400_000,        // 4 hours
   KEYWORD_ALERT: 21_600_000,   // 6 hours
 } as const;
 

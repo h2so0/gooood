@@ -139,6 +139,7 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
   void setQuietHours(int start, int end) {
     state = state.copyWith(quietStartHour: start, quietEndHour: end);
     _save();
+    DeviceProfileSync().syncNow();
   }
 
   /// FCM 토픽 구독 상태를 설정값과 동기화
