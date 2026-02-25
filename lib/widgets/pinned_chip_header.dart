@@ -14,6 +14,9 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// 칩별 패딩을 커스텀 (심볼 있는 칩은 좌측 패딩 줄이기 등)
   final EdgeInsets Function(int index, bool selected)? chipPaddingBuilder;
 
+  /// 칩 리스트 오른쪽 끝에 고정 배치할 위젯 (예: 정렬 버튼)
+  final Widget? trailingWidget;
+
   const PinnedChipHeaderDelegate({
     required this.itemCount,
     required this.selectedIndex,
@@ -21,6 +24,7 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.theme,
     required this.chipContentBuilder,
     this.chipPaddingBuilder,
+    this.trailingWidget,
   });
 
   @override
@@ -43,35 +47,46 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
       child: SizedBox(
         height: 52,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          itemCount: itemCount,
-          separatorBuilder: (_, _) => const SizedBox(width: 6),
-          itemBuilder: (context, i) {
-            final selected = i == selectedIndex;
-            final padding = chipPaddingBuilder?.call(i, selected)
-                ?? const EdgeInsets.symmetric(horizontal: 16);
-            return GestureDetector(
-              onTap: () => onSelected(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: Alignment.center,
-                padding: padding,
-                decoration: BoxDecoration(
-                  color: selected ? t.textPrimary : t.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  border: selected
-                      ? null
-                      : Border.all(
-                          color: t.border.withValues(alpha: 0.5),
-                          width: 0.8),
-                ),
-                child: chipContentBuilder(i, selected),
+        child: Row(
+          children: [
+            Expanded(
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.fromLTRB(16, 10, trailingWidget != null ? 8 : 16, 10),
+                itemCount: itemCount,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (context, i) {
+                  final selected = i == selectedIndex;
+                  final padding = chipPaddingBuilder?.call(i, selected)
+                      ?? const EdgeInsets.symmetric(horizontal: 16);
+                  return GestureDetector(
+                    onTap: () => onSelected(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.center,
+                      padding: padding,
+                      decoration: BoxDecoration(
+                        color: selected ? t.textPrimary : t.surface,
+                        borderRadius: BorderRadius.circular(18),
+                        border: selected
+                            ? null
+                            : Border.all(
+                                color: t.border.withValues(alpha: 0.5),
+                                width: 0.8),
+                      ),
+                      child: chipContentBuilder(i, selected),
+                    ),
+                  );
+                },
               ),
-            );
-          },
+            ),
+            if (trailingWidget != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: trailingWidget!,
+              ),
+          ],
         ),
       ),
     );
@@ -81,5 +96,6 @@ class PinnedChipHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant PinnedChipHeaderDelegate oldDelegate) =>
       selectedIndex != oldDelegate.selectedIndex ||
       itemCount != oldDelegate.itemCount ||
-      theme != oldDelegate.theme;
+      theme != oldDelegate.theme ||
+      trailingWidget != oldDelegate.trailingWidget;
 }

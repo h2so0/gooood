@@ -8,6 +8,8 @@ import '../../providers/notification_provider.dart';
 import '../../services/notification_service.dart';
 import 'notification_history_sheet.dart';
 import '../legal_screen.dart';
+import '../wishlist/keyword_wishlist_screen.dart';
+import '../../providers/keyword_wishlist_provider.dart';
 import '../../widgets/coupang_banner.dart';
 import '../../widgets/screen_header.dart';
 import 'settings_widgets.dart';
@@ -35,6 +37,25 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           CoupangBanner(),
+          const SizedBox(height: 12),
+
+          // 바로가기
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: cardDecoration(t),
+            child: Consumer(builder: (context, ref, _) {
+              final wishCount = ref.watch(keywordWishlistProvider).length;
+              return TapRow(
+                icon: Icons.bookmark_outline,
+                label: '키워드 저장',
+                trailing: wishCount > 0 ? '$wishCount' : null,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const KeywordWishlistScreen()),
+                ),
+              );
+            }),
+          ),
           const SizedBox(height: 20),
 
           // 일반

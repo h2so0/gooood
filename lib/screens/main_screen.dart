@@ -5,14 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
-import '../providers/keyword_wishlist_provider.dart';
 import '../providers/trend_provider.dart';
 import 'detail/product_detail_screen.dart';
+import 'daily_best_screen.dart';
 import 'search_screen.dart';
 import 'settings/settings_screen.dart';
-import 'wishlist/keyword_wishlist_screen.dart';
 import 'home/home_feed.dart';
 import 'home/rolling_keywords.dart';
+import 'home/time_deal_feed.dart';
 import 'category_feed.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
@@ -33,6 +33,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   static const _tabs = [
     '홈',
+    '타임딜',
     '디지털/가전',
     '패션/의류',
     '생활/건강',
@@ -173,11 +174,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // 찜 버튼
+                  // 오늘의 BEST 버튼
                   GestureDetector(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                          builder: (_) => const KeywordWishlistScreen()),
+                          builder: (_) => const DailyBestScreen()),
                     ),
                     child: Container(
                       width: 42,
@@ -187,45 +188,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: t.border, width: 0.5),
                       ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(Icons.bookmark_outline,
-                              color: t.textTertiary, size: 20),
-                          // 뱃지
-                          Consumer(builder: (context, ref, _) {
-                            final count =
-                                ref.watch(keywordWishlistProvider).length;
-                            if (count == 0) return const SizedBox.shrink();
-                            final label = count > 9 ? '9+' : '$count';
-                            return Positioned(
-                              top: 4,
-                              right: 4,
-                              child: Container(
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: t.drop,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  label,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.1),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
+                      child: Icon(Icons.emoji_events_outlined,
+                          color: t.textTertiary, size: 20),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -282,17 +246,30 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const SizedBox(height: 4),
-                          Text(
-                            _tabs[i],
-                            style: TextStyle(
-                              color: selected
-                                  ? t.textPrimary
-                                  : t.textTertiary,
-                              fontSize: 14,
-                              fontWeight: selected
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_tabs[i] == '타임딜') ...[
+                                Icon(Icons.timer,
+                                    size: 12,
+                                    color: selected
+                                        ? t.textPrimary
+                                        : t.textTertiary),
+                                const SizedBox(width: 3),
+                              ],
+                              Text(
+                                _tabs[i],
+                                style: TextStyle(
+                                  color: selected
+                                      ? t.textPrimary
+                                      : t.textTertiary,
+                                  fontSize: 14,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 6),
                           AnimatedContainer(
@@ -337,16 +314,23 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 if (!_visitedTabs.contains(i)) {
                   return const SizedBox.shrink();
                 }
-                return i == 0
-                    ? HomeFeed(
-                        onTap: _openDetail,
-                        scrollController: _scrollControllers[i],
-                      )
-                    : CategoryFeed(
-                        category: _tabs[i],
-                        onTap: _openDetail,
-                        scrollController: _scrollControllers[i],
-                      );
+                if (i == 0) {
+                  return HomeFeed(
+                    onTap: _openDetail,
+                    scrollController: _scrollControllers[i],
+                  );
+                }
+                if (i == 1) {
+                  return TimeDealFeed(
+                    onTap: _openDetail,
+                    scrollController: _scrollControllers[i],
+                  );
+                }
+                return CategoryFeed(
+                  category: _tabs[i],
+                  onTap: _openDetail,
+                  scrollController: _scrollControllers[i],
+                );
               }),
             ),
           ),

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import '../constants/app_constants.dart';
 import '../models/product.dart';
+import '../models/sort_option.dart';
 
 // ── 타입 ──
 
@@ -166,32 +167,6 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   bool _useFeedOrder = true;
   bool _isFirstFetch = true;
   static const _cacheKey = 'hot_first_page';
-
-  HotProductsNotifier() {
-    _loadCachedProducts();
-  }
-
-  /// SWR: 캐시 데이터를 즉시 표시한 뒤 Firestore에서 최신 데이터로 교체
-  Future<void> _loadCachedProducts() async {
-    try {
-      final box = Hive.box(HiveBoxes.feedCache);
-      final raw = box.get(_cacheKey);
-      if (raw != null) {
-        final list = (jsonDecode(raw as String) as List)
-            .map((e) => Product.fromJson(e as Map<String, dynamic>))
-            .toList();
-        if (list.isNotEmpty) {
-          state = ProductListState(
-            products: list,
-            isLoading: true, // Firestore 갱신 진행 중 표시
-            hasMore: true,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('[HotProducts] cache load error: $e');
-    }
-  }
 
   /// 첫 페이지 결과를 Hive에 저장
   void _saveCacheIfFirstPage() {
@@ -535,11 +510,157 @@ const sourceFilterTabs = <SourceTab>[
       colorValue: 0xFFF2A900, symbol: 'S'),
 ];
 
+// ── TimeDealProductsNotifier ──
+
+class TimeDealProductsNotifier extends PaginatedProductsNotifier {
+  @override
+  String get logTag => 'TimeDeal';
+
+  @override
+  Future<Query> buildQuery() async {
+    final now = DateTime.now().toIso8601String();
+    return FirebaseFirestore.instance
+        .collection('products')
+        .where('saleEndDate', isGreaterThan: now)
+        .orderBy('saleEndDate')
+        .limit(PaginatedProductsNotifier.pageSize);
+  }
+
+  @override
+  Future<int> countTotal() async {
+    final now = DateTime.now().toIso8601String();
+    final snap = await FirebaseFirestore.instance
+        .collection('products')
+        .where('saleEndDate', isGreaterThan: now)
+        .count()
+        .get();
+    return snap.count ?? 0;
+  }
+
+  @override
+  Future<void> refresh() async {
+    wrapped = false;
+    startOffset = 0;
+    state = const ProductListState();
+    await fetchPage();
+  }
+}
+
+// ── DropRateSortedNotifier (홈 피드 할인율순) ──
+
+class DropRateSortedNotifier extends PaginatedProductsNotifier {
+  @override
+  String get logTag => 'DropRateSorted';
+
+  @override
+  Future<Query> buildQuery() async {
+    return FirebaseFirestore.instance
+        .collection('products')
+        .where('dropRate', isGreaterThan: 0)
+        .orderBy('dropRate', descending: true)
+        .limit(PaginatedProductsNotifier.pageSize);
+  }
+
+  @override
+  Future<int> countTotal() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('products')
+        .where('dropRate', isGreaterThan: 0)
+        .count()
+        .get();
+    return snap.count ?? 0;
+  }
+
+  @override
+  Future<void> refresh() async {
+    wrapped = false;
+    startOffset = 0;
+    state = const ProductListState();
+    await fetchPage();
+  }
+}
+
+// ── CategoryDropRateNotifier (카테고리 할인율순) ──
+
+class CategoryDropRateNotifier extends PaginatedProductsNotifier {
+  final String category;
+
+  CategoryDropRateNotifier(this.category);
+
+  @override
+  String get logTag => 'CategoryDropRate($category)';
+
+  @override
+  Future<Query> buildQuery() async {
+    return FirebaseFirestore.instance
+        .collection('products')
+        .where('category', isEqualTo: category)
+        .orderBy('dropRate', descending: true)
+        .limit(PaginatedProductsNotifier.pageSize);
+  }
+
+  @override
+  Future<int> countTotal() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('products')
+        .where('category', isEqualTo: category)
+        .count()
+        .get();
+    return snap.count ?? 0;
+  }
+
+  @override
+  Future<void> refresh() async {
+    wrapped = false;
+    startOffset = 0;
+    state = const ProductListState();
+    await fetchPage();
+  }
+}
+
+// ── 클라이언트 사이드 정렬 헬퍼 ──
+
+List<Product> applySortOption(List<Product> products, SortOption sort) {
+  switch (sort) {
+    case SortOption.dropRate:
+      return [...products]..sort((a, b) => b.dropRate.compareTo(a.dropRate));
+    case SortOption.priceLow:
+      return [...products]..sort((a, b) => a.currentPrice.compareTo(b.currentPrice));
+    case SortOption.priceHigh:
+      return [...products]..sort((a, b) => b.currentPrice.compareTo(a.currentPrice));
+    case SortOption.review:
+      return [...products]..sort((a, b) {
+        final scoreA = a.reviewScore ?? 0;
+        final scoreB = b.reviewScore ?? 0;
+        final cmp = scoreB.compareTo(scoreA);
+        if (cmp != 0) return cmp;
+        return (b.reviewCount ?? 0).compareTo(a.reviewCount ?? 0);
+      });
+    default:
+      return products;
+  }
+}
+
 // ── Providers ──
 
 final hotProductsProvider =
     StateNotifierProvider<HotProductsNotifier, ProductListState>(
   (ref) => HotProductsNotifier(),
+);
+
+final timeDealProductsProvider =
+    StateNotifierProvider<TimeDealProductsNotifier, ProductListState>(
+  (ref) => TimeDealProductsNotifier(),
+);
+
+final dropRateSortedProvider =
+    StateNotifierProvider<DropRateSortedNotifier, ProductListState>(
+  (ref) => DropRateSortedNotifier(),
+);
+
+final categoryDropRateProvider = StateNotifierProvider.autoDispose
+    .family<CategoryDropRateNotifier, ProductListState, String>(
+  (ref, category) => CategoryDropRateNotifier(category),
 );
 
 final sourceFilteredProductsProvider = StateNotifierProvider.autoDispose
@@ -555,3 +676,13 @@ final categoryProductsProvider =
         ProductListState, CategoryFilter>(
   (ref, filter) => CategoryProductsNotifier(filter),
 );
+
+// ── Sort state providers ──
+
+final homeSortProvider = StateProvider<SortOption>((ref) => SortOption.recommended);
+
+final categorySortProvider = StateProvider.family<SortOption, String>(
+  (ref, category) => SortOption.recommended,
+);
+
+final timeDealSortProvider = StateProvider<SortOption>((ref) => SortOption.recommended);

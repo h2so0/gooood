@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
+import '../../models/sort_option.dart';
+import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
@@ -9,6 +11,7 @@ import '../../widgets/product_card.dart';
 import '../../widgets/coupang_banner.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/pinned_chip_header.dart';
+import '../../widgets/sort_button.dart';
 
 /// 홈 피드: 롤링 인기 검색어 + 핫딜 그리드
 class HomeFeed extends ConsumerStatefulWidget {
@@ -43,7 +46,10 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
     }
   }
 
-  ProductListState _watchCurrentState(WidgetRef ref) {
+  ProductListState _watchCurrentState(WidgetRef ref, SortOption sort) {
+    if (sort == SortOption.dropRate) {
+      return ref.watch(dropRateSortedProvider);
+    }
     final tab = sourceFilterTabs[_selectedSourceIndex];
     if (tab.sourceKey == null) {
       return ref.watch(hotProductsProvider);
@@ -52,6 +58,11 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   }
 
   Future<void> _refreshCurrent() async {
+    final sort = ref.read(homeSortProvider);
+    if (sort == SortOption.dropRate) {
+      await ref.read(dropRateSortedProvider.notifier).refresh();
+      return;
+    }
     final tab = sourceFilterTabs[_selectedSourceIndex];
     if (tab.sourceKey == null) {
       await ref.read(hotProductsProvider.notifier).refresh();
@@ -63,6 +74,11 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   }
 
   void _fetchNextPageCurrent() {
+    final sort = ref.read(homeSortProvider);
+    if (sort == SortOption.dropRate) {
+      ref.read(dropRateSortedProvider.notifier).fetchNextPage();
+      return;
+    }
     final tab = sourceFilterTabs[_selectedSourceIndex];
     if (tab.sourceKey == null) {
       ref.read(hotProductsProvider.notifier).fetchNextPage();
@@ -76,8 +92,14 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
-    final currentState = _watchCurrentState(ref);
-    final products = currentState.products;
+    final sort = ref.watch(homeSortProvider);
+    final currentState = _watchCurrentState(ref, sort);
+
+    final products = (sort == SortOption.priceLow ||
+            sort == SortOption.priceHigh ||
+            sort == SortOption.review)
+        ? applySortOption(currentState.products, sort)
+        : currentState.products;
 
     final isInitialLoading = products.isEmpty && currentState.isLoading;
 
@@ -95,6 +117,7 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
             slivers: [
+              // 소스 필터 칩
               SliverPersistentHeader(
                 pinned: true,
                 delegate: PinnedChipHeaderDelegate(
@@ -115,6 +138,17 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                     }
                   },
                   theme: t,
+                  trailingWidget: SortChip(
+                    current: sort,
+                    theme: t,
+                    onChanged: (opt) {
+                      ref.read(homeSortProvider.notifier).state = opt;
+                      AnalyticsService.logSortChanged('홈', opt.label);
+                      if (_scrollController.hasClients) {
+                        _scrollController.jumpTo(0);
+                      }
+                    },
+                  ),
                   chipPaddingBuilder: (i, _) {
                     final tab = sourceFilterTabs[i];
                     final hasSymbol = tab.symbol != null && tab.colorValue != null;
@@ -167,7 +201,6 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
               if (isInitialLoading)
                 const SliverToBoxAdapter(child: SkeletonHomeFeed())
               else ...[
-                const SliverToBoxAdapter(child: SizedBox(height: 6)),
                 if (products.isEmpty)
                   SliverToBoxAdapter(
                     child: Padding(

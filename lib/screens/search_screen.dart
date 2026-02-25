@@ -2,11 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import '../models/sort_option.dart';
 import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/product_card.dart';
 import '../widgets/keyword_price_section.dart';
+import '../widgets/sort_button.dart';
 import '../providers/providers.dart';
 import 'detail/product_detail_screen.dart';
 import 'home/trend_section.dart';
@@ -24,6 +26,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
   String _query = '';
+  SortOption _sort = SortOption.recommended;
 
   @override
   void initState() {
@@ -167,13 +170,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final results = ref.watch(searchResultsProvider(_query));
 
     return results.when(
-      data: (products) {
-        if (products.isEmpty) {
+      data: (rawProducts) {
+        if (rawProducts.isEmpty) {
           return Center(
             child: Text('"$_query" 검색 결과가 없습니다',
                 style: TextStyle(color: t.textSecondary)),
           );
         }
+        final products = _sort == SortOption.recommended
+            ? rawProducts
+            : applySortOption(rawProducts, _sort);
         return RefreshIndicator(
           color: t.textPrimary,
           backgroundColor: t.card,
@@ -192,7 +198,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: KeywordPriceSection(keyword: _query),
               ),
 
-              // 기존 상품 그리드
+              // 정렬 필터
+              SliverToBoxAdapter(
+                child: SortToolbar(
+                  current: _sort,
+                  theme: t,
+                  onChanged: (opt) {
+                    setState(() => _sort = opt);
+                    AnalyticsService.logSortChanged('검색', opt.label);
+                  },
+                ),
+              ),
+
+              // 상품 그리드
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
                 sliver: SliverMasonryGrid.count(

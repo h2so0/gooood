@@ -388,6 +388,8 @@ export const dailyBest = onSchedule(
       )
       .join("\n");
 
+    await writeCache("dailyBest", products);
+
     await sendToTopic(
       "dailyBest",
       "📊 오늘의 BEST 딜 TOP 5",

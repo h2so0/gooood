@@ -68,6 +68,12 @@ class AnalyticsService {
         'sub_category': subCategory ?? 'all',
       });
 
+  static Future<void> logSortChanged(String screen, String sortOption) =>
+      _analytics.logEvent(name: 'sort_changed', parameters: {
+        'screen': screen,
+        'sort_option': sortOption,
+      });
+
   // ── wishlist ──
 
   static Future<void> logKeywordWishlistAdd(String keyword) =>
