@@ -27,20 +27,24 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 3개를 병렬 실행 (모두 독립적)
-  await Future.wait([
-    initializeDateFormatting('ko_KR'),
-    Hive.initFlutter(),
-    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
-  ]);
+  try {
+    await Future.wait([
+      initializeDateFormatting('ko_KR'),
+      Hive.initFlutter(),
+      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+    ]);
 
-  // Firestore 오프라인 퍼시스턴스: 두 번째 실행부터 로컬 캐시 우선 반환
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  );
+    // Firestore 오프라인 퍼시스턴스: 두 번째 실행부터 로컬 캐시 우선 반환
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
 
-  // SWR용 Hive box 사전 오픈
-  await Hive.openBox('feed_cache');
+    // SWR용 Hive box 사전 오픈
+    await Hive.openBox('feed_cache');
+  } catch (e) {
+    debugPrint('[Init] Initialization error: $e');
+  }
 
   runApp(const ProviderScope(child: TteolgaApp()));
 }

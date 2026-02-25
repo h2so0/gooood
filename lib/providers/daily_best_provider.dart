@@ -18,12 +18,28 @@ final dailyBestProvider = FutureProvider<List<Product>>((ref) async {
   }
 
   // 2) cache 없으면 Firestore에서 가져와서 판매처별 2개씩 점수화 순위
-  final snap = await FirebaseFirestore.instance
-      .collection('products')
-      .orderBy('reviewScore', descending: true)
-      .limit(100)
-      .get();
-  final all = snap.docs.map((d) => Product.fromJson(d.data())).toList();
+  // reviewScore가 없는 상품도 있으므로 feedOrder(인기순)도 조회
+  final results = await Future.wait([
+    FirebaseFirestore.instance
+        .collection('products')
+        .orderBy('reviewScore', descending: true)
+        .limit(100)
+        .get(),
+    FirebaseFirestore.instance
+        .collection('products')
+        .orderBy('feedOrder')
+        .limit(100)
+        .get(),
+  ]);
+  final seen = <String>{};
+  final all = <Product>[];
+  for (final snap in results) {
+    for (final d in snap.docs) {
+      if (seen.add(d.id)) {
+        all.add(Product.fromJson(d.data()));
+      }
+    }
+  }
   return _rankByMall(all);
 });
 
@@ -46,14 +62,26 @@ List<Product> _rankByMall(List<Product> products) {
   final mallCount = <String, int>{};
   final picked = <Product>[];
 
+  // 1차: 판매처별 2개씩
   for (final p in scored) {
+    if (picked.length >= 10) break;
     final mall = p.displayMallName;
     final count = mallCount[mall] ?? 0;
     if (count < 2) {
       picked.add(p);
       mallCount[mall] = count + 1;
     }
-    if (picked.length >= 10) break; // 최대 10개
+  }
+
+  // 부족하면 나머지에서 채움 (판매처 제한 해제)
+  if (picked.length < 10) {
+    final pickedIds = picked.map((p) => p.id).toSet();
+    for (final p in scored) {
+      if (picked.length >= 10) break;
+      if (!pickedIds.contains(p.id)) {
+        picked.add(p);
+      }
+    }
   }
 
   // 최종 점수순 정렬
