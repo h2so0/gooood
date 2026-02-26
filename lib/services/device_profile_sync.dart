@@ -29,6 +29,8 @@ class DeviceProfileSync {
   final _db = FirebaseFirestore.instance;
 
   Timer? _debounceTimer;
+  // ignore: unused_field — stored to prevent GC of the subscription
+  StreamSubscription<String>? _tokenRefreshSub;
   String? _currentTokenHash;
   bool _initialized = false;
 
@@ -45,7 +47,7 @@ class DeviceProfileSync {
       }
 
       // Listen for token refresh → migrate old profile to new doc
-      _messaging.onTokenRefresh.listen((newToken) async {
+      _tokenRefreshSub = _messaging.onTokenRefresh.listen((newToken) async {
         final oldHash = _currentTokenHash;
         final newHash = _hashToken(newToken);
         if (oldHash != null && oldHash != newHash) {
@@ -191,21 +193,23 @@ class DeviceProfileSync {
     }
   }
 
+  /// 클라이언트가 쓸 수 있는 필드만 (서버 전용 필드 제외)
+  static const _clientFields = {
+    'fcmToken', 'tokenHash', 'platform',
+    'watchedProductIds', 'categoryScores', 'subCategoryScores',
+    'priceSnapshots', 'keywordWishlist',
+    'enablePriceDrop', 'enableCategoryAlert', 'enableSmartDigest',
+    'quietStartHour', 'quietEndHour', 'lastSyncedAt',
+  };
+
   Future<void> _migrateProfile(
       String oldHash, String newHash, String newToken) async {
     try {
-      final oldDoc =
-          await _db.collection('device_profiles').doc(oldHash).get();
-      if (oldDoc.exists) {
-        final data = Map<String, dynamic>.from(oldDoc.data()!);
-        data['fcmToken'] = newToken;
-        data['tokenHash'] = newHash;
-        data['lastSyncedAt'] = FieldValue.serverTimestamp();
-
-        await _db.collection('device_profiles').doc(newHash).set(data);
-        await _db.collection('device_profiles').doc(oldHash).delete();
-        debugPrint('[DeviceProfileSync] migrated profile $oldHash → $newHash');
-      }
+      // 마이그레이션: 새 토큰으로 즉시 sync (기존 문서 읽기 불가하므로)
+      // 서버 필드(lastPriceDropSentAt 등)는 소실되지만 다음 알림 주기에 재생성됨
+      _currentTokenHash = newHash;
+      await _performSync();
+      debugPrint('[DeviceProfileSync] migrated to new token $newHash');
     } catch (e) {
       debugPrint('[DeviceProfileSync] migration error: $e');
     }

@@ -80,7 +80,15 @@ class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
                 delegate: PinnedChipHeaderDelegate(
                   itemCount: 1,
                   selectedIndex: 0,
-                  onSelected: (_) {},
+                  onSelected: (_) {
+                    if (_scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        0,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  },
                   theme: t,
                   trailingWidget: SortChip(
                     current: sort,

@@ -38,8 +38,12 @@ class MemoryCache {
 
   T? get<T>(String key) {
     final entry = _store[key];
-    if (entry != null && !entry.isExpired) return entry.data as T;
-    return null;
+    if (entry == null) return null;
+    if (entry.isExpired) {
+      _store.remove(key);
+      return null;
+    }
+    return entry.data as T;
   }
 
   void put<T>(String key, T data) {

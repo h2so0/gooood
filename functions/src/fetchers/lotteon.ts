@@ -59,8 +59,8 @@ function parseLotteonProduct(
 
   let saleEndDate: string | null = null;
   if (item.slEndDttm && !item.slEndDttm.startsWith("9999")) {
-    // "2026-02-23 23:59:00" → ISO format
-    saleEndDate = item.slEndDttm.replace(" ", "T");
+    // "2026-02-23 23:59:00" → ISO format with KST timezone
+    saleEndDate = item.slEndDttm.replace(" ", "T") + "+09:00";
   }
 
   return {

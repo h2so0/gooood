@@ -49,6 +49,7 @@ export function extractRawId(id: string): string | null {
   for (const prefix of ["deal_", "best_", "live_", "promo_"]) {
     if (id.startsWith(prefix)) return `naver_${id.substring(prefix.length)}`;
   }
+  if (id.startsWith("11st_")) return id;  // 11번가: ID 그대로 사용
   if (id.startsWith("gmkt_")) return `gmkt_${id.substring(5)}`;
   if (id.startsWith("auction_")) return `auction_${id.substring(8)}`;
   if (id.startsWith("lotte_")) return id; // 롯데ON: ID 그대로 사용
@@ -62,31 +63,36 @@ export function sanitizeDocId(id: string): string {
 
 /** Extract __NEXT_DATA__ JSON from an HTML page */
 export function extractNextData(html: string): any | null {
-  // 1차: 정규식
-  const match = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
-  );
-  if (match) return JSON.parse(match[1]);
+  try {
+    // 1차: 정규식
+    const match = html.match(
+      /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
+    );
+    if (match) return JSON.parse(match[1]);
 
-  // 2차: indexOf (속성 순서가 다를 수 있음)
-  let startMarker = '<script id="__NEXT_DATA__" type="application/json">';
-  let startIdx = html.indexOf(startMarker);
-  if (startIdx === -1) {
-    const altIdx = html.indexOf("__NEXT_DATA__");
-    if (altIdx !== -1) {
-      const tagEnd = html.indexOf(">", altIdx);
-      if (tagEnd !== -1) {
-        const tagStart = html.lastIndexOf("<script", altIdx);
-        startMarker = html.substring(tagStart, tagEnd + 1);
-        startIdx = tagStart;
+    // 2차: indexOf (속성 순서가 다를 수 있음)
+    let startMarker = '<script id="__NEXT_DATA__" type="application/json">';
+    let startIdx = html.indexOf(startMarker);
+    if (startIdx === -1) {
+      const altIdx = html.indexOf("__NEXT_DATA__");
+      if (altIdx !== -1) {
+        const tagEnd = html.indexOf(">", altIdx);
+        if (tagEnd !== -1) {
+          const tagStart = html.lastIndexOf("<script", altIdx);
+          startMarker = html.substring(tagStart, tagEnd + 1);
+          startIdx = tagStart;
+        }
       }
+      if (startIdx === -1) return null;
     }
-    if (startIdx === -1) return null;
+    const jsonStart = startIdx + startMarker.length;
+    const endIdx = html.indexOf("</script>", jsonStart);
+    if (endIdx === -1) return null;
+    return JSON.parse(html.substring(jsonStart, endIdx));
+  } catch (e) {
+    console.error("[extractNextData] parse error:", e);
+    return null;
   }
-  const jsonStart = startIdx + startMarker.length;
-  const endIdx = html.indexOf("</script>", jsonStart);
-  if (endIdx === -1) return null;
-  return JSON.parse(html.substring(jsonStart, endIdx));
 }
 
 export async function writeCache(docId: string, items: unknown[]): Promise<void> {
@@ -342,15 +348,20 @@ export async function cleanupOldNotificationRecords(): Promise<void> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 7);
   const db = admin.firestore();
-  const oldSnap = await db
-    .collection("sent_notifications")
-    .where("timestamp", "<", cutoff)
-    .limit(100)
-    .get();
-  if (!oldSnap.empty) {
+
+  for (let round = 0; round < 5; round++) {
+    const oldSnap = await db
+      .collection("sent_notifications")
+      .where("timestamp", "<", cutoff)
+      .limit(100)
+      .get();
+    if (oldSnap.empty) break;
+
     const batch = db.batch();
     oldSnap.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
+
+    if (oldSnap.size < 100) break;
   }
 }
 

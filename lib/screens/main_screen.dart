@@ -43,8 +43,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     '출산/육아',
   ];
 
-  void _onFeedScroll() {
-    final sc = _scrollControllers[_tabIndex];
+  late final List<void Function()> _scrollListeners;
+
+  void _onFeedScroll(int scrollIndex) {
+    // Ignore scroll events from non-active tabs
+    if (scrollIndex != _tabIndex) return;
+    final sc = _scrollControllers[scrollIndex];
     if (!sc.hasClients) return;
     final offset = sc.offset;
     final delta = offset - _lastScrollOffset;
@@ -63,30 +67,39 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   void initState() {
     super.initState();
     _scrollControllers = List.generate(_tabs.length, (_) => ScrollController());
-    for (final sc in _scrollControllers) {
-      sc.addListener(_onFeedScroll);
+    _scrollListeners = List.generate(
+      _tabs.length,
+      (i) => () => _onFeedScroll(i),
+    );
+    for (int i = 0; i < _tabs.length; i++) {
+      _scrollControllers[i].addListener(_scrollListeners[i]);
     }
-    // 홈 렌더링 후 1초 뒤 나머지 카테고리 프리페치
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      setState(() {
-        for (int i = 1; i < _tabs.length; i++) {
-          _visitedTabs.add(i);
-        }
-      });
-    });
+    // 홈 렌더링 후 점진적 탭 프리페치 (2개씩 500ms 간격)
+    _prefetchTabs();
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
       final offline = results.every((r) => r == ConnectivityResult.none);
       if (offline != _isOffline) setState(() => _isOffline = offline);
     });
   }
 
+  Future<void> _prefetchTabs() async {
+    await Future.delayed(const Duration(seconds: 1));
+    for (int i = 1; i < _tabs.length; i += 2) {
+      if (!mounted) return;
+      setState(() {
+        _visitedTabs.add(i);
+        if (i + 1 < _tabs.length) _visitedTabs.add(i + 1);
+      });
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
   @override
   void dispose() {
     _connectivitySub.cancel();
-    for (final c in _scrollControllers) {
-      c.removeListener(_onFeedScroll);
-      c.dispose();
+    for (int i = 0; i < _scrollControllers.length; i++) {
+      _scrollControllers[i].removeListener(_scrollListeners[i]);
+      _scrollControllers[i].dispose();
     }
     super.dispose();
   }
@@ -147,11 +160,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                     }
                                     return RollingKeywords(
                                       keywords: keywords,
-                                      onTap: (_) {
+                                      onTap: (keyword) {
                                         Navigator.of(context).push(
                                           MaterialPageRoute(
                                             builder: (_) =>
-                                                const SearchScreen(autofocus: false),
+                                                SearchScreen(initialQuery: keyword, autofocus: false),
                                           ),
                                         );
                                       },

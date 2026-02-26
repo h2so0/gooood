@@ -18,10 +18,13 @@ async function callGemini<T>(prompt: string, logTag: string): Promise<T | null> 
   if (!apiKey) return null;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -39,8 +42,17 @@ async function callGemini<T>(prompt: string, logTag: string): Promise<T | null> 
   }
 
   const data = (await res.json()) as any;
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  return JSON.parse(text) as T;
+  let text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+  // Strip markdown code block wrapper if present
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    console.error(`[${logTag}] JSON.parse failed:`, e, "raw:", text.substring(0, 200));
+    return null;
+  }
 }
 
 export function mapToAppCategory(
@@ -406,8 +418,25 @@ export async function backfillSubCategories(): Promise<number> {
 
   if (snap.empty) return 0;
 
-  for (let i = 0; i < snap.docs.length; i += AI_FULL_BATCH) {
-    const batch = snap.docs.slice(i, i + AI_FULL_BATCH);
+  // 이미 유효한 category+subCategory 있는 상품 제외
+  const needsClassification = snap.docs.filter((doc) => {
+    const data = doc.data();
+    const cat = data.category as string | undefined;
+    const sub = data.subCategory as string | undefined;
+    if (!cat || !VALID_CATEGORIES.includes(cat)) return true;
+    const validSubs = SUB_CATEGORIES[cat] || [];
+    return !sub || !validSubs.includes(sub);
+  });
+
+  if (needsClassification.length === 0) {
+    console.log("[backfill] all products already have valid classification");
+    return 0;
+  }
+
+  console.log(`[backfill] ${needsClassification.length} products need classification`);
+
+  for (let i = 0; i < needsClassification.length; i += AI_FULL_BATCH) {
+    const batch = needsClassification.slice(i, i + AI_FULL_BATCH);
     const titles = batch.map((d) => (d.data().title as string) || "");
     const results = await classifyWithGemini(titles);
 
@@ -426,7 +455,7 @@ export async function backfillSubCategories(): Promise<number> {
       console.error(`[backfill] batch error at ${i}:`, e);
     }
 
-    if (i + AI_FULL_BATCH < snap.docs.length) await sleep(DELAYS.AI_BATCH);
+    if (i + AI_FULL_BATCH < needsClassification.length) await sleep(DELAYS.AI_BATCH);
   }
 
   console.log(`[backfill] ${total} products fully reclassified`);

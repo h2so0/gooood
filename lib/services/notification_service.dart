@@ -336,6 +336,14 @@ class NotificationService {
     final type = data['type'] ?? 'general';
     final now = DateTime.now();
 
+    if (!Hive.isBoxOpen(_historyBoxName)) {
+      try {
+        await Hive.openBox<String>(_historyBoxName);
+      } catch (e) {
+        debugPrint('[NotificationService] failed to open history box: $e');
+        return;
+      }
+    }
     final box = Hive.box<String>(_historyBoxName);
     // 최근 10개 레코드에서 중복 체크
     final recentCount = box.length < 10 ? box.length : 10;

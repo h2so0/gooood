@@ -42,6 +42,7 @@ final viewedProductsProvider =
 
 class ViewedProductsNotifier extends StateNotifier<List<ViewedProductEntry>> {
   static const _boxName = 'viewed_products';
+  Future<void>? _saveFuture;
 
   ViewedProductsNotifier() : super([]) {
     _load();
@@ -62,12 +63,20 @@ class ViewedProductsNotifier extends StateNotifier<List<ViewedProductEntry>> {
     state = entries.take(50).toList();
   }
 
-  Future<void> _save() async {
-    final box = await _openBox();
-    await box.clear();
-    for (final entry in state) {
-      await box.put(entry.product.id, jsonEncode(entry.toJson()));
-    }
+  Future<void> _save() {
+    // Chain saves to prevent concurrent Hive writes
+    _saveFuture = (_saveFuture ?? Future.value()).then((_) async {
+      try {
+        final box = await _openBox();
+        await box.clear();
+        for (final entry in state) {
+          await box.put(entry.product.id, jsonEncode(entry.toJson()));
+        }
+      } catch (e) {
+        debugPrint('[ViewedProducts] _save error: $e');
+      }
+    });
+    return _saveFuture!;
   }
 
   void add(Product product) {

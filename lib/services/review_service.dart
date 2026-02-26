@@ -21,12 +21,12 @@ class ReviewService {
 
       // 첫 실행 날짜 기록
       if (!prefs.containsKey(_keyInstallDate)) {
-        prefs.setString(_keyInstallDate, DateTime.now().toIso8601String());
+        await prefs.setString(_keyInstallDate, DateTime.now().toIso8601String());
       }
 
       // 조회 카운트 증가
       final count = (prefs.getInt(_keyViewCount) ?? 0) + 1;
-      prefs.setInt(_keyViewCount, count);
+      await prefs.setInt(_keyViewCount, count);
 
       // 조건 충족 여부 확인
       if (!_meetsConditions(prefs, count)) return;
@@ -35,7 +35,7 @@ class ReviewService {
       final reviewer = InAppReview.instance;
       if (await reviewer.isAvailable()) {
         await reviewer.requestReview();
-        prefs.setString(_keyLastPrompt, DateTime.now().toIso8601String());
+        await prefs.setString(_keyLastPrompt, DateTime.now().toIso8601String());
         debugPrint('[Review] 리뷰 요청 표시');
       }
     } catch (e) {

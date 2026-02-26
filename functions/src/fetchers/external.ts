@@ -83,7 +83,7 @@ function parse11stItems(
           saleEndDate: item.displayEndDate
             ? item.displayEndDate.replace(
                 /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/,
-                "$1-$2-$3T$4:$5:$6"
+                "$1-$2-$3T$4:$5:$6+09:00"
               )
             : null,
         });

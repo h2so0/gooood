@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/trend_data.dart';
@@ -15,6 +16,7 @@ class RollingKeywords extends ConsumerStatefulWidget {
 
 class _RollingKeywordsState extends ConsumerState<RollingKeywords> {
   int _currentIndex = 0;
+  Timer? _rollingTimer;
 
   @override
   void initState() {
@@ -22,14 +24,18 @@ class _RollingKeywordsState extends ConsumerState<RollingKeywords> {
     _startRolling();
   }
 
+  @override
+  void dispose() {
+    _rollingTimer?.cancel();
+    super.dispose();
+  }
+
   void _startRolling() {
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
+    _rollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || widget.keywords.isEmpty) return;
       setState(() {
-        _currentIndex =
-            (_currentIndex + 1) % widget.keywords.length;
+        _currentIndex = (_currentIndex + 1) % widget.keywords.length;
       });
-      _startRolling();
     });
   }
 

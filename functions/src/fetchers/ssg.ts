@@ -95,7 +95,7 @@ function parseSsgProduct(
     // "YYYYMMDDHHmmss" → ISO
     const s = item.dispEndDts;
     if (s.length >= 14) {
-      saleEndDate = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`;
+      saleEndDate = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}+09:00`;
     }
   }
 

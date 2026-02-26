@@ -56,7 +56,7 @@ class SettingsScreen extends ConsumerWidget {
               );
             }),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
           // 일반
           Container(

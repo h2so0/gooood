@@ -77,16 +77,20 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('noti_hotDeal', state.hotDeal);
-    await prefs.setBool('noti_saleSoonEnd', state.saleSoonEnd);
-    await prefs.setBool('noti_dailyBest', state.dailyBest);
-    await prefs.setStringList('noti_categories', state.categories.toList());
-    await prefs.setInt('noti_quietStart', state.quietStartHour);
-    await prefs.setInt('noti_quietEnd', state.quietEndHour);
-    await prefs.setBool('noti_priceDrop', state.priceDrop);
-    await prefs.setBool('noti_categoryAlert', state.categoryAlert);
-    await prefs.setBool('noti_smartDigest', state.smartDigest);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('noti_hotDeal', state.hotDeal);
+      await prefs.setBool('noti_saleSoonEnd', state.saleSoonEnd);
+      await prefs.setBool('noti_dailyBest', state.dailyBest);
+      await prefs.setStringList('noti_categories', state.categories.toList());
+      await prefs.setInt('noti_quietStart', state.quietStartHour);
+      await prefs.setInt('noti_quietEnd', state.quietEndHour);
+      await prefs.setBool('noti_priceDrop', state.priceDrop);
+      await prefs.setBool('noti_categoryAlert', state.categoryAlert);
+      await prefs.setBool('noti_smartDigest', state.smartDigest);
+    } catch (e) {
+      debugPrint('[NotificationSettings] _save error: $e');
+    }
   }
 
   void _toggle(
@@ -143,38 +147,38 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
   }
 
   /// FCM 토픽 구독 상태를 설정값과 동기화
-  void _syncTopics() {
+  Future<void> _syncTopics() async {
     if (kIsWeb) return;
 
-    // 핫딜 토픽
-    if (state.hotDeal) {
-      _service.subscribeToTopic(FcmTopics.hotDeal);
-    } else {
-      _service.unsubscribeFromTopic(FcmTopics.hotDeal);
-    }
+    try {
+      final futures = <Future>[];
 
-    // 마감임박 토픽
-    if (state.saleSoonEnd) {
-      _service.subscribeToTopic(FcmTopics.saleEnd);
-    } else {
-      _service.unsubscribeFromTopic(FcmTopics.saleEnd);
-    }
+      // 핫딜 토픽
+      futures.add(state.hotDeal
+          ? _service.subscribeToTopic(FcmTopics.hotDeal)
+          : _service.unsubscribeFromTopic(FcmTopics.hotDeal));
 
-    // 일일베스트 토픽
-    if (state.dailyBest) {
-      _service.subscribeToTopic(FcmTopics.dailyBest);
-    } else {
-      _service.unsubscribeFromTopic(FcmTopics.dailyBest);
-    }
+      // 마감임박 토픽
+      futures.add(state.saleSoonEnd
+          ? _service.subscribeToTopic(FcmTopics.saleEnd)
+          : _service.unsubscribeFromTopic(FcmTopics.saleEnd));
 
-    // 카테고리별 핫딜 토픽
-    for (final entry in FcmTopics.categoryIds.entries) {
-      final topic = FcmTopics.hotDealCategory(entry.value);
-      if (state.hotDeal && state.categories.contains(entry.key)) {
-        _service.subscribeToTopic(topic);
-      } else {
-        _service.unsubscribeFromTopic(topic);
+      // 일일베스트 토픽
+      futures.add(state.dailyBest
+          ? _service.subscribeToTopic(FcmTopics.dailyBest)
+          : _service.unsubscribeFromTopic(FcmTopics.dailyBest));
+
+      // 카테고리별 핫딜 토픽
+      for (final entry in FcmTopics.categoryIds.entries) {
+        final topic = FcmTopics.hotDealCategory(entry.value);
+        futures.add(state.hotDeal && state.categories.contains(entry.key)
+            ? _service.subscribeToTopic(topic)
+            : _service.unsubscribeFromTopic(topic));
       }
+
+      await Future.wait(futures);
+    } catch (e) {
+      debugPrint('[NotificationSettings] _syncTopics error: $e');
     }
   }
 }

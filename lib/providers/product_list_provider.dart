@@ -151,7 +151,13 @@ abstract class PaginatedProductsNotifier
     wrapped = false;
     state = state.copyWith(isLoading: true);
 
-    final total = await countTotal();
+    int total;
+    try {
+      total = await countTotal();
+    } catch (e) {
+      debugPrint('[$logTag] countTotal error: $e');
+      total = 0;
+    }
     if (gen != _refreshGen) return; // 새 refresh가 시작됨
 
     startOffset = total > pageSize ? Random().nextInt(total) : 0;

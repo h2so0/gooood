@@ -203,9 +203,18 @@ class Product {
     return null;
   }
 
+  static String _decodeHtmlEntities(String text) {
+    return text
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'");
+  }
+
   factory Product.fromNaverApi(Map<String, dynamic> json) {
-    final title = (json['title'] as String)
-        .replaceAll(RegExp(r'<[^>]*>'), '');
+    final title = _decodeHtmlEntities(
+        (json['title'] as String).replaceAll(RegExp(r'<[^>]*>'), ''));
     final lprice = int.tryParse(json['lprice']?.toString() ?? '0') ?? 0;
     final hprice = int.tryParse(json['hprice']?.toString() ?? '0') ?? 0;
     // hprice > lprice 이면 할인율 계산용으로 사용

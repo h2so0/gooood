@@ -10,9 +10,18 @@ String proxyImage(String url) {
 }
 
 /// 이미지 URL → aspect ratio (width / height) 전역 캐시
+const _maxAspectCacheSize = 500;
 final _imageAspectCache = <String, double>{};
 
 double? getCachedAspectRatio(String url) => _imageAspectCache[url];
 
-void cacheAspectRatio(String url, double ratio) =>
-    _imageAspectCache[url] = ratio;
+void cacheAspectRatio(String url, double ratio) {
+  _imageAspectCache[url] = ratio;
+  if (_imageAspectCache.length > _maxAspectCacheSize) {
+    // Remove oldest 50 entries
+    final keysToRemove = _imageAspectCache.keys.take(50).toList();
+    for (final key in keysToRemove) {
+      _imageAspectCache.remove(key);
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -22,6 +23,7 @@ import 'screens/detail/product_detail_screen.dart';
 import 'screens/search_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+bool _firebaseInitialized = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,14 +33,17 @@ void main() async {
     await Future.wait([
       initializeDateFormatting('ko_KR'),
       Hive.initFlutter(),
-      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
+          .then((_) => _firebaseInitialized = true),
     ]);
 
     // Firestore 오프라인 퍼시스턴스: 두 번째 실행부터 로컬 캐시 우선 반환
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
+    if (_firebaseInitialized) {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: 50 * 1024 * 1024, // 50 MB
+      );
+    }
 
     // SWR용 Hive box 사전 오픈
     await Hive.openBox('feed_cache');
@@ -58,11 +63,14 @@ class TteolgaApp extends ConsumerStatefulWidget {
 
 class _TteolgaAppState extends ConsumerState<TteolgaApp>
     with WidgetsBindingObserver {
+  Timer? _keywordCollectionTimer;
+  StreamSubscription<Uri>? _deepLinkSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (!kIsWeb) {
+    if (!kIsWeb && _firebaseInitialized) {
       _initializeServices(); // fire-and-forget (비차단)
       _setupNotificationHandlers();
       _checkFirstPermission();
@@ -72,6 +80,8 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
 
   @override
   void dispose() {
+    _keywordCollectionTimer?.cancel();
+    _deepLinkSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -104,16 +114,20 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
   }
 
   void _checkFirstPermission() async {
-    final settings = await FirebaseMessaging.instance.getNotificationSettings();
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      ref.read(notificationSettingsProvider.notifier).enableAllOnFirstPermission();
+    try {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        ref.read(notificationSettingsProvider.notifier).enableAllOnFirstPermission();
+      }
+    } catch (e) {
+      debugPrint('[Init] _checkFirstPermission error: $e');
     }
   }
 
   /// 일별 키워드 가격 수집 트리거
   void _triggerDailyKeywordCollection() {
     // 앱 시작 후 5초 지연 (초기화 완료 대기)
-    Future.delayed(const Duration(seconds: 5), () {
+    _keywordCollectionTimer = Timer(const Duration(seconds: 5), () {
       if (!mounted) return;
       final wishItems = ref.read(keywordWishlistProvider);
       if (wishItems.isEmpty) return;
@@ -158,7 +172,7 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
     });
 
     // 앱이 실행 중일 때 딥링크 수신
-    appLinks.uriLinkStream.listen((uri) {
+    _deepLinkSub = appLinks.uriLinkStream.listen((uri) {
       _handleDeepLink(uri);
     });
   }

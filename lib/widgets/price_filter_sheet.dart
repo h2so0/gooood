@@ -147,7 +147,7 @@ class PriceFilterButton extends ConsumerWidget {
   }
 }
 
-class _PriceField extends StatelessWidget {
+class _PriceField extends StatefulWidget {
   final String label;
   final int? value;
   final TteolgaTheme theme;
@@ -161,12 +161,32 @@ class _PriceField extends StatelessWidget {
   });
 
   @override
+  State<_PriceField> createState() => _PriceFieldState();
+}
+
+class _PriceFieldState extends State<_PriceField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+        text: widget.value != null ? widget.value.toString() : '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final t = theme;
+    final t = widget.theme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
+        Text(widget.label,
             style: TextStyle(color: t.textTertiary, fontSize: 12)),
         const SizedBox(height: 6),
         Container(
@@ -186,11 +206,10 @@ class _PriceField extends StatelessWidget {
               suffixText: '원',
               suffixStyle: TextStyle(color: t.textTertiary, fontSize: 13),
             ),
-            controller: TextEditingController(
-                text: value != null ? value.toString() : ''),
+            controller: _controller,
             onChanged: (text) {
               final v = int.tryParse(text);
-              onChanged(v);
+              widget.onChanged(v);
             },
           ),
         ),

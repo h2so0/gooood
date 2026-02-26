@@ -139,6 +139,8 @@ export async function loadEligibleProfiles(filter: {
     const token = profile.fcmToken as string;
     const tokenHash = profile.tokenHash as string;
 
+    if (!token || !tokenHash) continue;
+
     // Rate limit
     const lastSent = profile[filter.rateLimitField]?.toDate?.();
     if (lastSent && lastSent > cutoff) continue;
@@ -186,7 +188,7 @@ export async function matchCategory(title: string): Promise<string | null> {
 
 export async function checkPriceDrops(): Promise<void> {
   const db = admin.firestore();
-  const oneHourAgo = new Date(Date.now() - 3600000);
+  const oneHourAgo = new Date(Date.now() - RATE_LIMIT.PRICE_DROP);
 
   const profilesSnap = await db
     .collection("device_profiles")

@@ -55,6 +55,16 @@ import { refreshFeedData } from "./feed";
 
 // SA key secret for FCM authentication in Gen 2 Cloud Functions
 const ADMIN_SA_KEY = defineSecret("ADMIN_SA_KEY");
+const ADMIN_AUTH_TOKEN = defineSecret("ADMIN_AUTH_TOKEN");
+
+function verifyAdminAuth(req: { headers: Record<string, unknown> }): boolean {
+  const authHeader = (req.headers.authorization || "") as string;
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : "";
+  const expected = process.env.ADMIN_AUTH_TOKEN;
+  return !!expected && token === expected;
+}
 
 // Initialize with explicit credential if SA key is available (fixes FCM auth in Cloud Run)
 function initAdmin() {
@@ -91,19 +101,17 @@ async function sendTimeBoundAlert(
   const db = admin.firestore();
   const sentRef = db.collection("sent_notifications");
 
-  const recent = await sentRef
-    .where("type", "==", type)
-    .orderBy("timestamp", "desc")
-    .limit(1)
-    .get();
-  const lastTime = recent.docs[0]?.data()?.timestamp?.toDate?.();
-  if (lastTime && (Date.now() - lastTime.getTime()) < rateLimitMs) return;
-
+  // Single query: fetch recent records for rate limit + dedup check
   const sentSnap = await sentRef
     .where("type", "==", type)
     .orderBy("timestamp", "desc")
     .limit(200)
     .get();
+
+  // Rate limit check from first (most recent) record
+  const lastTime = sentSnap.docs[0]?.data()?.timestamp?.toDate?.();
+  if (lastTime && (Date.now() - lastTime.getTime()) < rateLimitMs) return;
+
   const sentIds = new Set(sentSnap.docs.map((d) => d.data().productId));
 
   for (const deal of candidates) {
@@ -361,10 +369,13 @@ export const dailyBest = onSchedule(
     const snap = await admin
       .firestore()
       .collection("products")
+      .where("dropRate", ">", 5)
       .orderBy("dropRate", "desc")
-      .limit(5)
+      .limit(20)
       .get();
-    let products: ProductJson[] = snap.docs.map((d) => d.data() as ProductJson);
+    let products: ProductJson[] = snap.docs
+      .map((d) => d.data() as ProductJson)
+      .slice(0, 5);
 
     if (products.length === 0) {
       products = (await fetchTodayDeals()).slice(0, 5);
@@ -426,6 +437,37 @@ export const sendCategoryAlerts = onSchedule(
     const db = admin.firestore();
     let sentCount = 0;
 
+    // Pre-fetch top deals per category to avoid N+1 queries
+    const neededCategories = new Set<string>();
+    for (const { profile } of eligible) {
+      const catScores = (profile.categoryScores || {}) as Record<string, number>;
+      const topCat = Object.entries(catScores)
+        .sort(([, a], [, b]) => b - a)[0]?.[0];
+      if (topCat) neededCategories.add(topCat);
+    }
+
+    const categoryDealCache = new Map<string, { docId: string; title: string; rate: number }>();
+    for (const cat of neededCategories) {
+      try {
+        const dealSnap = await db
+          .collection("products")
+          .where("category", "==", cat)
+          .orderBy("dropRate", "desc")
+          .limit(1)
+          .get();
+        if (!dealSnap.empty) {
+          const deal = dealSnap.docs[0].data();
+          categoryDealCache.set(cat, {
+            docId: dealSnap.docs[0].id,
+            title: deal.title as string,
+            rate: Math.round(deal.dropRate || 0),
+          });
+        }
+      } catch (e) {
+        console.error(`[sendCategoryAlerts] prefetch ${cat} error:`, e);
+      }
+    }
+
     for (const { doc: profileDoc, token, tokenHash, profile } of eligible) {
       const catScores = (profile.categoryScores || {}) as Record<string, number>;
       if (Object.keys(catScores).length === 0) continue;
@@ -434,25 +476,15 @@ export const sendCategoryAlerts = onSchedule(
         .sort(([, a], [, b]) => b - a)[0]?.[0];
       if (!topCat) continue;
 
+      const cached = categoryDealCache.get(topCat);
+      if (!cached || cached.rate < 10) continue;
+
       try {
-        const dealSnap = await db
-          .collection("products")
-          .where("category", "==", topCat)
-          .orderBy("dropRate", "desc")
-          .limit(1)
-          .get();
-
-        if (dealSnap.empty) continue;
-
-        const deal = dealSnap.docs[0].data();
-        const rate = Math.round(deal.dropRate || 0);
-        if (rate < 10) continue;
-
-        const title = `🏷️ ${topCat} 핫딜 ${rate}% 할인!`;
-        const body = deal.title as string;
+        const title = `🏷️ ${topCat} 핫딜 ${cached.rate}% 할인!`;
+        const body = cached.title;
 
         const sent = await sendToDevice(
-          token, tokenHash, title, body, "categoryInterest", dealSnap.docs[0].id
+          token, tokenHash, title, body, "categoryInterest", cached.docId
         );
         if (sent) {
           await profileDoc.ref.update({
@@ -591,9 +623,13 @@ export const manualSync = onRequest(
   {
     region: "asia-northeast3",
     timeoutSeconds: 540,
-    secrets: ["GEMINI_API_KEY", ADMIN_SA_KEY],
+    secrets: ["GEMINI_API_KEY", ADMIN_SA_KEY, ADMIN_AUTH_TOKEN],
   },
   async (_req, res) => {
+    if (!verifyAdminAuth(_req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     initAdmin();
     const results: string[] = [];
 
@@ -674,9 +710,13 @@ export const manualSync = onRequest(
 export const testFcm = onRequest(
   {
     region: "asia-northeast3",
-    secrets: [ADMIN_SA_KEY],
+    secrets: [ADMIN_SA_KEY, ADMIN_AUTH_TOKEN],
   },
   async (_req, res) => {
+    if (!verifyAdminAuth(_req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     initAdmin();
     const results: string[] = [];
 
@@ -870,6 +910,21 @@ export const naverProxy = onRequest(
   }
 );
 
+const IMAGE_PROXY_ALLOWED_HOSTS = new Set([
+  "shopping-phinf.pstatic.net",
+  "simg.ssgcdn.com",
+  "image.lotteon.com",
+  "cdn.011st.com",
+  "gdimg.gmarket.co.kr",
+  "image.auction.co.kr",
+  "thumbnail.gmarket.co.kr",
+  "pic.gmarket.co.kr",
+  "ai.esmplus.com",
+  "shop-phinf.pstatic.net",
+  "sitem.ssgcdn.com",
+  "image-cdn.hypb.st",
+]);
+
 export const imageProxy = onRequest(
   {
     region: "asia-northeast3",
@@ -877,8 +932,26 @@ export const imageProxy = onRequest(
   },
   async (req, res) => {
     const url = req.query.url as string;
-    if (!url || !url.startsWith("http")) {
-      res.status(400).send("Missing or invalid url");
+    if (!url) {
+      res.status(400).send("Missing url");
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      res.status(400).send("Invalid url");
+      return;
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      res.status(400).send("Invalid protocol");
+      return;
+    }
+
+    if (!IMAGE_PROXY_ALLOWED_HOSTS.has(parsed.hostname)) {
+      res.status(403).send("Host not allowed");
       return;
     }
 
@@ -897,6 +970,11 @@ export const imageProxy = onRequest(
 
       const contentType =
         response.headers.get("content-type") || "image/jpeg";
+      if (!contentType.startsWith("image/")) {
+        res.status(403).send("Non-image content type");
+        return;
+      }
+
       const buffer = await response.buffer();
 
       res.set("Access-Control-Allow-Origin", "*");

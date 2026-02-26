@@ -203,10 +203,11 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
 export async function refreshFeedData(): Promise<void> {
   const db = admin.firestore();
 
-  // 1) 전체 상품 조회 (dropRate 0 포함)
+  // 1) 전체 상품 조회 (dropRate 0 포함) — feedOrder 계산에 필요한 필드만
   const snap = await db
     .collection("products")
     .where("dropRate", ">=", 0)
+    .select("source", "category", "dropRate")
     .get();
 
   if (snap.empty) {

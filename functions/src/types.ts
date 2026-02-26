@@ -24,6 +24,7 @@ export interface ProductJson {
   isArrivalGuarantee: boolean;
   saleEndDate: string | null;
   searchKeywords?: string[];
+  source?: string;
 }
 
 export interface KeywordJson {

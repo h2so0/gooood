@@ -21,14 +21,52 @@ service cloud.firestore {
     // keyword_snapshots: 가격 추이 히스토리 (클라이언트 읽기/쓰기)
     match /keyword_snapshots/{keyword} {
       allow read: if true;
-      allow write: if true;
+      allow create: if request.resource.data.keys().hasOnly(
+        ['lastCollectedAt', 'snapshots', 'trackerCount']
+      ) && (
+        !('snapshots' in request.resource.data) ||
+        request.resource.data.snapshots.size() <= 90
+      );
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+        ['lastCollectedAt', 'snapshots', 'trackerCount']
+      ) && (
+        !('snapshots' in request.resource.data) ||
+        request.resource.data.snapshots.size() <= 90
+      );
+      allow delete: if false;
+
+      // 하위 컬렉션 차단
+      match /{sub=**} {
+        allow read, write: if false;
+      }
     }
 
     // device_profiles: 클라이언트에서 자기 프로필 생성/수정 허용
     match /device_profiles/{tokenHash} {
       allow read: if false;
-      allow create, update: if true;
+      allow create: if request.resource.data.tokenHash == tokenHash
+        && request.resource.data.keys().hasOnly([
+          'fcmToken', 'tokenHash', 'platform',
+          'watchedProductIds', 'categoryScores', 'subCategoryScores',
+          'priceSnapshots', 'keywordWishlist',
+          'enablePriceDrop', 'enableCategoryAlert', 'enableSmartDigest',
+          'quietStartHour', 'quietEndHour', 'lastSyncedAt'
+        ]);
+      // update: 클라이언트가 변경하는 필드만 검증 (서버가 추가한 필드는 건드리지 않음)
+      allow update: if request.resource.data.tokenHash == tokenHash
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fcmToken', 'tokenHash', 'platform',
+          'watchedProductIds', 'categoryScores', 'subCategoryScores',
+          'priceSnapshots', 'keywordWishlist',
+          'enablePriceDrop', 'enableCategoryAlert', 'enableSmartDigest',
+          'quietStartHour', 'quietEndHour', 'lastSyncedAt'
+        ]);
       allow delete: if false;
+
+      // 하위 컬렉션 차단
+      match /{sub=**} {
+        allow read, write: if false;
+      }
     }
   }
 }

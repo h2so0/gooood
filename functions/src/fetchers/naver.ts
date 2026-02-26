@@ -165,7 +165,8 @@ export async function fetchKeywordRank(): Promise<KeywordJson[]> {
   );
   if (!res.ok) return [];
 
-  const rawList = (await res.json()) as any[];
+  const rawData = await res.json();
+  const rawList = Array.isArray(rawData) ? rawData : [];
   const keywords: KeywordJson[] = [];
 
   for (const item of rawList) {
@@ -190,7 +191,9 @@ export async function fetchPopularKeywords(
   categoryName: string
 ): Promise<PopularKeywordJson[]> {
   const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // 어제 날짜 사용 (오늘 데이터는 아직 집계되지 않았을 수 있음)
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
 
   const res = await fetch(
     "https://datalab.naver.com/shoppingInsight/getKeywordRank.naver",
@@ -203,7 +206,7 @@ export async function fetchPopularKeywords(
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       },
-      body: `cid=${categoryId}&timeUnit=date&startDate=${today}&endDate=${today}&age=&gender=&device=`,
+      body: `cid=${categoryId}&timeUnit=date&startDate=${dateStr}&endDate=${dateStr}&age=&gender=&device=`,
     }
   );
   if (!res.ok) return [];

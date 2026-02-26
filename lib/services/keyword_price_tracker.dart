@@ -75,7 +75,9 @@ class KeywordPriceTracker {
 
       snapshots.add(summary.toJson());
 
-      // 90일 초과 제거
+      // 날짜순 정렬 보장 후 90일 초과 제거
+      snapshots.sort((a, b) =>
+          (a['date'] as String? ?? '').compareTo(b['date'] as String? ?? ''));
       if (snapshots.length > _maxSnapshots) {
         snapshots = snapshots.sublist(snapshots.length - _maxSnapshots);
       }
@@ -151,7 +153,11 @@ class KeywordPriceTracker {
 
   /// 키워드 정규화 (Firestore 문서 ID용)
   String _normalizeKeyword(String keyword) {
-    return keyword.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_');
+    return keyword
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[/\.#\$\[\]]'), '')
+        .replaceAll(RegExp(r'\s+'), '_');
   }
 
   Future<Box<dynamic>> _openMetaBox() => getOrOpenBox<dynamic>(_metaBoxName);
