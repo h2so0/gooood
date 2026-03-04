@@ -15,6 +15,9 @@ import 'home/rolling_keywords.dart';
 import 'home/time_deal_feed.dart';
 import 'category_feed.dart';
 
+/// 알림 클릭 시 탭 전환에 사용하는 전역 탭 인덱스 Provider
+final mainTabIndexProvider = StateProvider<int>((ref) => 0);
+
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
@@ -108,6 +111,19 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Widget build(BuildContext context) {
     final t = ref.watch(tteolgaThemeProvider);
     final topPadding = MediaQuery.of(context).padding.top;
+
+    // 외부(알림 핸들러 등)에서 탭 전환 요청 감지
+    ref.listen<int>(mainTabIndexProvider, (prev, next) {
+      if (next != _tabIndex) {
+        final sc = _scrollControllers[next];
+        _lastScrollOffset = sc.hasClients ? sc.offset : 0;
+        setState(() {
+          _tabIndex = next;
+          _visitedTabs.add(next);
+          _showSearchBar = true;
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -248,6 +264,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       _visitedTabs.add(i);
                       _showSearchBar = true;
                     });
+                    ref.read(mainTabIndexProvider.notifier).state = i;
                     AnalyticsService.logCategoryChanged(_tabs[i]);
                   },
                   child: Container(

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
+import 'constants/app_constants.dart';
 import 'models/product.dart';
 import 'providers/notification_provider.dart';
 import 'providers/keyword_wishlist_provider.dart';
@@ -17,6 +18,7 @@ import 'providers/keyword_price_provider.dart';
 import 'services/analytics_service.dart';
 import 'services/notification_service.dart';
 import 'services/device_profile_sync.dart';
+import 'services/startup_popup_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/main_screen.dart';
 import 'screens/detail/product_detail_screen.dart';
@@ -51,7 +53,26 @@ void main() async {
     debugPrint('[Init] Initialization error: $e');
   }
 
+  // 스플래시 중 Firestore pre-fetch (fire-and-forget)
+  if (_firebaseInitialized) {
+    _prefetchHotProducts();
+  }
+
   runApp(const ProviderScope(child: TteolgaApp()));
+}
+
+/// 스플래시 중 Firestore 쿼리를 미리 실행해 SDK 내부 캐시 워밍업 (fire-and-forget)
+void _prefetchHotProducts() {
+  FirebaseFirestore.instance
+      .collection('products')
+      .where('feedOrder', isGreaterThanOrEqualTo: 0)
+      .orderBy('feedOrder')
+      .limit(PaginationConfig.pageSize)
+      .get()
+      .then((_) {})
+      .catchError((e) {
+    debugPrint('[Prefetch] hot products fetch error: $e');
+  });
 }
 
 class TteolgaApp extends ConsumerStatefulWidget {
@@ -108,8 +129,23 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
       // 초기 user property 설정
       final isDark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
       AnalyticsService.setThemeProperty(isDark);
+
+      // 서버 알림 내역 동기화 (fire-and-forget)
+      notiService.syncFromServer();
+
+      // 시작 팝업 (공지/업데이트) 표시
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      _showStartupPopup();
     } catch (e) {
       debugPrint('[Init] Service initialization error: $e');
+    }
+  }
+
+  void _showStartupPopup() {
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) {
+      StartupPopupService.checkAndShow(ctx, ref);
     }
   }
 
@@ -211,6 +247,31 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
 
   static final _validProductId = RegExp(r'^[\w\-:.]{1,128}$');
 
+  /// 탭 이름 목록 (MainScreen._tabs와 동일 순서)
+  static const _tabNames = [
+    '홈', '타임딜',
+    '디지털/가전', '패션/의류', '생활/건강', '식품', '뷰티', '스포츠/레저', '출산/육아',
+  ];
+
+  int _resolveTabIndex(Product product) {
+    // 타임딜: saleEndDate가 미래이면 타임딜 탭
+    if (product.saleEndDate != null) {
+      try {
+        if (DateTime.parse(product.saleEndDate!).isAfter(DateTime.now())) {
+          return 1;
+        }
+      } catch (_) {}
+    }
+    // 카테고리 매핑
+    final cat = product.category1;
+    if (cat.isNotEmpty) {
+      for (int i = 2; i < _tabNames.length; i++) {
+        if (_tabNames[i] == cat) return i;
+      }
+    }
+    return 0; // 기본: 홈
+  }
+
   Future<void> _navigateToProduct(String productId) async {
     if (!_validProductId.hasMatch(productId)) return;
     try {
@@ -222,6 +283,11 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
       if (!doc.exists || doc.data() == null) return;
 
       final product = Product.fromJson(doc.data()!);
+
+      // 해당 탭으로 전환
+      final tabIndex = _resolveTabIndex(product);
+      ref.read(mainTabIndexProvider.notifier).state = tabIndex;
+
       navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (_) => ProductDetailScreen(product: product),

@@ -31,6 +31,16 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _prefetchSourceTabs();
+  }
+
+  /// 판매처 탭 데이터를 백그라운드에서 미리 로드
+  void _prefetchSourceTabs() {
+    for (final tab in sourceFilterTabs) {
+      if (tab.sourceKey != null) {
+        ref.read(sourceFilteredProductsProvider(tab.sourceKey!));
+      }
+    }
   }
 
   @override

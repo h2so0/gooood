@@ -1,9 +1,11 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -421,6 +423,100 @@ class NotificationService {
     if (kIsWeb) return;
     final box = Hive.box<String>(_historyBoxName);
     await box.clear();
+  }
+
+  // ── 서버 알림 내역 동기화 ──
+
+  /// Firestore notification_log에서 최근 24시간 항목을 조회하고
+  /// 로컬 Hive에 없는 항목을 추가한다.
+  /// topic 알림은 사용자 설정과 대조하여 관련 알림만 가져온다.
+  Future<void> syncFromServer() async {
+    if (kIsWeb) return;
+
+    try {
+      if (!Hive.isBoxOpen(_historyBoxName)) {
+        await Hive.openBox<String>(_historyBoxName);
+      }
+      final box = Hive.box<String>(_historyBoxName);
+
+      // 사용자 알림 설정 로드
+      final prefs = await SharedPreferences.getInstance();
+      final enableHotDeal = prefs.getBool('noti_hotDeal') ?? true;
+      final enableSaleEnd = prefs.getBool('noti_saleSoonEnd') ?? true;
+      final enableDailyBest = prefs.getBool('noti_dailyBest') ?? false;
+
+      // 최근 24시간의 topic 알림만 조회
+      final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+      final snapshot = await FirebaseFirestore.instance
+          .collection('notification_log')
+          .where('sentAt', isGreaterThan: Timestamp.fromDate(cutoff))
+          .where('topic', isNull: false)
+          .orderBy('sentAt', descending: true)
+          .limit(50)
+          .get();
+
+      if (snapshot.docs.isEmpty) return;
+
+      // 로컬 내역의 title+timestamp 맵 구축 (중복 체크용)
+      final localRecords = <String, DateTime>{};
+      for (int i = 0; i < box.length; i++) {
+        final raw = box.getAt(i);
+        if (raw == null) continue;
+        final record = jsonDecode(raw) as Map<String, dynamic>;
+        final title = record['title'] as String? ?? '';
+        final ts = DateTime.tryParse(record['timestamp'] ?? '');
+        if (ts != null) {
+          localRecords[title] = ts;
+        }
+      }
+
+      int addedCount = 0;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final type = data['type'] as String? ?? '';
+
+        // 사용자 설정과 대조
+        if (type == 'hotDeal' && !enableHotDeal) continue;
+        if (type == 'saleEnd' && !enableSaleEnd) continue;
+        if (type == 'dailyBest' && !enableDailyBest) continue;
+
+        final title = data['title'] as String? ?? '';
+        final sentAt = (data['sentAt'] as Timestamp?)?.toDate();
+        if (sentAt == null) continue;
+
+        // 로컬에 동일 title이 5분 이내에 있으면 skip
+        final localTs = localRecords[title];
+        if (localTs != null &&
+            sentAt.difference(localTs).inMinutes.abs() < 5) {
+          continue;
+        }
+
+        final record = {
+          'title': title,
+          'body': data['body'] as String? ?? '',
+          'type': type,
+          'productId': data['productId'],
+          'timestamp': sentAt.toIso8601String(),
+          'isRead': false,
+          'fromSync': true,
+        };
+        await box.add(jsonEncode(record));
+        addedCount++;
+      }
+
+      // 크기 제한
+      if (box.length > _maxHistoryCount) {
+        final keysToRemove =
+            box.keys.take(box.length - _maxHistoryCount).toList();
+        await box.deleteAll(keysToRemove);
+      }
+
+      if (addedCount > 0) {
+        debugPrint('[NotificationService] synced $addedCount items from server');
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] syncFromServer error: $e');
+    }
   }
 
 }

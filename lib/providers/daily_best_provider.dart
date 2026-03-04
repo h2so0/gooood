@@ -17,18 +17,27 @@ final dailyBestProvider = FutureProvider<List<Product>>((ref) async {
     }
   }
 
-  // 2) cache 없으면 Firestore에서 가져와서 판매처별 2개씩 점수화 순위
-  // reviewScore가 없는 상품도 있으므로 feedOrder(인기순)도 조회
+  // 2) cache 없으면 Firestore에서 전체 소스 인기 상품 가져와서 점수화
   final results = await Future.wait([
+    // 실구매수 높은 상품 (전체 소스)
     FirebaseFirestore.instance
         .collection('products')
-        .orderBy('reviewScore', descending: true)
-        .limit(100)
+        .where('purchaseCount', isGreaterThan: 0)
+        .orderBy('purchaseCount', descending: true)
+        .limit(80)
         .get(),
+    // 리뷰 많은 상품 (전체 소스)
+    FirebaseFirestore.instance
+        .collection('products')
+        .where('reviewCount', isGreaterThan: 10)
+        .orderBy('reviewCount', descending: true)
+        .limit(80)
+        .get(),
+    // 피드 인기순 (전체 소스)
     FirebaseFirestore.instance
         .collection('products')
         .orderBy('feedOrder')
-        .limit(100)
+        .limit(60)
         .get(),
   ]);
   final seen = <String>{};
@@ -43,15 +52,21 @@ final dailyBestProvider = FutureProvider<List<Product>>((ref) async {
   return _rankByMall(all);
 });
 
-/// 종합 점수 산출 (리뷰 점수 + 리뷰 수 + 할인율 + 구매 수)
+/// 종합 점수 산출 (실시간 인기 중심: 순위 + 구매수 + 리뷰수)
 double calcBestScore(Product p) => _calcScore(p);
 
 double _calcScore(Product p) {
-  final review = (p.reviewScore ?? 0) * 20;       // 0~100
-  final reviewPop = (p.reviewCount ?? 0).clamp(0, 500) / 5; // 0~100
-  final drop = p.dropRate.clamp(0, 100);           // 0~100
   final purchase = (p.purchaseCount ?? 0).clamp(0, 1000) / 10; // 0~100
-  return review * 0.3 + reviewPop * 0.25 + drop * 0.25 + purchase * 0.2;
+  final reviewPop = (p.reviewCount ?? 0).clamp(0, 500) / 5;    // 0~100
+  final review = (p.reviewScore ?? 0) * 20;                     // 0~100
+  final rankBonus = p.rank != null ? (100 - p.rank!).clamp(0, 100).toDouble() : 0.0;
+  final drop = p.dropRate.clamp(0, 50).toDouble();              // 0~50
+
+  return purchase * 0.35 +      // 35% 실구매수
+         reviewPop * 0.25 +     // 25% 리뷰수 (구매 활발도)
+         review * 0.15 +        // 15% 리뷰 품질
+         rankBonus * 0.15 +     // 15% 순위 보너스 (best100만)
+         drop * 0.10;           // 10% 할인 보너스
 }
 
 /// 판매처별 2개씩 선정 후 점수 내림차순 정렬

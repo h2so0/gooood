@@ -48,6 +48,29 @@ function buildFcmPayload(
   };
 }
 
+async function saveNotificationLog(
+  title: string,
+  body: string,
+  type: string,
+  productId?: string,
+  topic?: string,
+  tokenHash?: string
+): Promise<void> {
+  try {
+    await admin.firestore().collection("notification_log").add({
+      title,
+      body,
+      type,
+      ...(productId ? { productId } : {}),
+      ...(topic ? { topic } : {}),
+      ...(tokenHash ? { tokenHash } : {}),
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("[saveNotificationLog] error:", e);
+  }
+}
+
 export async function sendToDevice(
   token: string,
   tokenHash: string,
@@ -61,6 +84,7 @@ export async function sendToDevice(
       token,
       ...buildFcmPayload(title, body, type, "personalized", productId),
     });
+    saveNotificationLog(title, body, type, productId, undefined, tokenHash);
     return true;
   } catch (e: any) {
     const code = e?.code || e?.errorInfo?.code || "";
@@ -100,6 +124,7 @@ export async function sendToTopic(
       topic,
       ...buildFcmPayload(title, body, type, channelId, productId),
     });
+    saveNotificationLog(title, body, type, productId, topic);
   } catch (e) {
     console.error(`FCM send failed for topic ${topic}:`, e);
   }

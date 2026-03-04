@@ -52,12 +52,16 @@ class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
     final currentState = ref.watch(timeDealProductsProvider);
 
     // 타임딜은 기본이 마감임박순. 클라이언트 정렬만 적용.
-    final products = (sort == SortOption.priceLow ||
-            sort == SortOption.priceHigh ||
-            sort == SortOption.review ||
-            sort == SortOption.dropRate)
-        ? applySortOption(currentState.products, sort)
-        : currentState.products;
+    // 추천순일 때는 판매처 인터리빙으로 골고루 분배.
+    final List<Product> products;
+    if (sort == SortOption.priceLow ||
+        sort == SortOption.priceHigh ||
+        sort == SortOption.review ||
+        sort == SortOption.dropRate) {
+      products = applySortOption(currentState.products, sort);
+    } else {
+      products = interleaveByMall(currentState.products);
+    }
 
     final isInitialLoading = products.isEmpty && currentState.isLoading;
 

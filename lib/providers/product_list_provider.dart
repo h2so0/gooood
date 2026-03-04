@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
 import '../constants/app_constants.dart';
 import '../models/product.dart';
 import '../models/sort_option.dart';
@@ -171,20 +169,6 @@ abstract class PaginatedProductsNotifier
 
 class HotProductsNotifier extends PaginatedProductsNotifier {
   bool _useFeedOrder = true;
-  bool _isFirstFetch = true;
-  static const _cacheKey = 'hot_first_page';
-
-  /// 첫 페이지 결과를 Hive에 저장
-  void _saveCacheIfFirstPage() {
-    if (state.products.isEmpty) return;
-    try {
-      final box = Hive.box(HiveBoxes.feedCache);
-      final items = state.products.take(PaginatedProductsNotifier.pageSize * 2).toList();
-      box.put(_cacheKey, jsonEncode(items.map((p) => p.toJson()).toList()));
-    } catch (e) {
-      debugPrint('[HotProducts] cache save error: $e');
-    }
-  }
 
   @override
   String get logTag => 'HotProducts';
@@ -214,48 +198,6 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   }
 
   @override
-  Future<void> fetchPage() async {
-    if (_isFirstFetch) {
-      // 첫 번째 Firestore 응답: SWR 캐시를 교체 (dedup 방지)
-      _isFirstFetch = false;
-      state = state.copyWith(isLoading: true);
-
-      try {
-        Query query = await buildQuery();
-        final snapshot = await query.get();
-        final now = DateTime.now();
-        final page = snapshot.docs
-            .map((doc) => Product.fromJson(doc.data() as Map<String, dynamic>))
-            .where((p) {
-              if (p.saleEndDate == null) return true;
-              try { return DateTime.parse(p.saleEndDate!).isAfter(now); }
-              catch (_) { return true; }
-            })
-            .toList();
-
-        if (page.isEmpty) {
-          await onEmptyFirstPage();
-          return;
-        }
-
-        state = ProductListState(
-          products: page,
-          isLoading: false,
-          hasMore: snapshot.docs.length >= PaginatedProductsNotifier.pageSize,
-          lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
-        );
-        _saveCacheIfFirstPage();
-      } catch (e) {
-        debugPrint('[$logTag] first fetchPage error: $e');
-        state = state.copyWith(isLoading: false);
-      }
-      return;
-    }
-
-    await super.fetchPage();
-  }
-
-  @override
   Future<int> countTotal() async {
     final countSnap = await FirebaseFirestore.instance
         .collection('products')
@@ -268,13 +210,11 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   @override
   Future<void> onEmptyFirstPage() async {
     if (!_useFeedOrder) return;
-    // feedOrder 범위 끝에 걸려 빈 페이지 → 0부터 재시도
     if (startOffset > 0) {
       startOffset = 0;
       await fetchPage();
       return;
     }
-    // startOffset=0인데도 비었으면 fallback
     _useFeedOrder = false;
     await fetchPage();
   }
@@ -282,9 +222,7 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
   @override
   Future<void> refresh() async {
     _useFeedOrder = true;
-    _isFirstFetch = true;
     await super.refresh();
-    _saveCacheIfFirstPage();
   }
 }
 
@@ -624,6 +562,35 @@ class CategoryDropRateNotifier extends PaginatedProductsNotifier {
   }
 }
 
+// ── 판매처 인터리빙 헬퍼 ──
+
+/// 상품을 displayMallName 기준으로 라운드 로빈 인터리빙.
+/// 같은 판매처 상품이 연속으로 뭉치지 않도록 골고루 분배한다.
+List<Product> interleaveByMall(List<Product> products) {
+  if (products.length <= 1) return products;
+
+  // displayMallName 기준 그룹핑 (등장 순서 보존)
+  final groups = <String, List<Product>>{};
+  for (final p in products) {
+    groups.putIfAbsent(p.displayMallName, () => []).add(p);
+  }
+
+  // 라운드 로빈
+  final result = <Product>[];
+  final iterators = groups.values.map((g) => g.iterator).toList();
+  bool any = true;
+  while (any) {
+    any = false;
+    for (final it in iterators) {
+      if (it.moveNext()) {
+        result.add(it.current);
+        any = true;
+      }
+    }
+  }
+  return result;
+}
+
 // ── 클라이언트 사이드 정렬 헬퍼 ──
 
 List<Product> applySortOption(List<Product> products, SortOption sort) {
@@ -664,12 +631,12 @@ final dropRateSortedProvider =
   (ref) => DropRateSortedNotifier(),
 );
 
-final categoryDropRateProvider = StateNotifierProvider.autoDispose
+final categoryDropRateProvider = StateNotifierProvider
     .family<CategoryDropRateNotifier, ProductListState, String>(
   (ref, category) => CategoryDropRateNotifier(category),
 );
 
-final sourceFilteredProductsProvider = StateNotifierProvider.autoDispose
+final sourceFilteredProductsProvider = StateNotifierProvider
     .family<SourceFilteredProductsNotifier, ProductListState, String>(
   (ref, key) {
     final sources = key.split(',');
@@ -678,7 +645,7 @@ final sourceFilteredProductsProvider = StateNotifierProvider.autoDispose
 );
 
 final categoryProductsProvider =
-    StateNotifierProvider.autoDispose.family<CategoryProductsNotifier,
+    StateNotifierProvider.family<CategoryProductsNotifier,
         ProductListState, CategoryFilter>(
   (ref, filter) => CategoryProductsNotifier(filter),
 );

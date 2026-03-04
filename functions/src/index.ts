@@ -357,6 +357,100 @@ export const refreshFeed = onSchedule(
   }
 );
 
+// ── 실시간 인기 점수 산출 ──
+function popularityScore(p: ProductJson): number {
+  const purchaseScore = Math.min((p.purchaseCount ?? 0) / 10, 100);
+  const reviewPopScore = Math.min((p.reviewCount ?? 0) / 5, 100);
+  const reviewQualScore = (p.reviewScore ?? 0) * 20;
+  const rankBonus = p.rank ? Math.max(0, 100 - p.rank) : 0;
+  const discountBonus = Math.min(dropRate(p), 50);
+
+  return purchaseScore * 0.35 +
+         reviewPopScore * 0.25 +
+         reviewQualScore * 0.15 +
+         rankBonus * 0.15 +
+         discountBonus * 0.10;
+}
+
+/** 점수순 정렬 후 판매처별 최대 maxPerMall개로 분산하여 limit개 선정 */
+function pickDiversified(
+  products: ProductJson[],
+  scoreFn: (p: ProductJson) => number,
+  limit: number,
+  maxPerMall = 2,
+): ProductJson[] {
+  const sorted = [...products].sort((a, b) => scoreFn(b) - scoreFn(a));
+  const mallCount: Record<string, number> = {};
+  const picked: ProductJson[] = [];
+
+  for (const p of sorted) {
+    if (picked.length >= limit) break;
+    const mall = p.mallName || "기타";
+    const cnt = mallCount[mall] ?? 0;
+    if (cnt < maxPerMall) {
+      picked.push(p);
+      mallCount[mall] = cnt + 1;
+    }
+  }
+  if (picked.length < limit) {
+    const ids = new Set(picked.map((p) => p.id));
+    for (const p of sorted) {
+      if (picked.length >= limit) break;
+      if (!ids.has(p.id)) picked.push(p);
+    }
+  }
+  return picked;
+}
+
+// ── 6시간마다 캐시 갱신 (실시간 인기 반영) ──
+export const refreshDailyBest = onSchedule(
+  {
+    schedule: "0 3,9,15,21 * * *",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+  },
+  async () => {
+    // 전체 소스에서 인기 상품 후보 수집
+    const [purchaseSnap, reviewSnap, feedSnap] = await Promise.all([
+      // 실구매수 높은 상품 (전체 소스)
+      admin.firestore().collection("products")
+        .where("purchaseCount", ">", 0)
+        .orderBy("purchaseCount", "desc")
+        .limit(80)
+        .get(),
+      // 리뷰 많은 상품 (전체 소스)
+      admin.firestore().collection("products")
+        .where("reviewCount", ">", 10)
+        .orderBy("reviewCount", "desc")
+        .limit(80)
+        .get(),
+      // 피드 인기순 (전체 소스)
+      admin.firestore().collection("products")
+        .orderBy("feedOrder")
+        .limit(60)
+        .get(),
+    ]);
+
+    const seen = new Set<string>();
+    const all: ProductJson[] = [];
+    for (const snap of [purchaseSnap, reviewSnap, feedSnap]) {
+      for (const d of snap.docs) {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          all.push(d.data() as ProductJson);
+        }
+      }
+    }
+
+    if (all.length === 0) return;
+
+    const picked = pickDiversified(all, popularityScore, 10);
+    await writeCache("dailyBest", picked);
+    console.log(`Refreshed dailyBest: ${picked.length} products`);
+  }
+);
+
+// ── 오전 9시 알림 발송 (하루 1회) ──
 export const dailyBest = onSchedule(
   {
     schedule: "0 9 * * *",
@@ -366,22 +460,6 @@ export const dailyBest = onSchedule(
   },
   async () => {
     initAdmin();
-    const snap = await admin
-      .firestore()
-      .collection("products")
-      .where("dropRate", ">", 5)
-      .orderBy("dropRate", "desc")
-      .limit(20)
-      .get();
-    let products: ProductJson[] = snap.docs
-      .map((d) => d.data() as ProductJson)
-      .slice(0, 5);
-
-    if (products.length === 0) {
-      products = (await fetchTodayDeals()).slice(0, 5);
-    }
-    if (products.length === 0) return;
-
     const db = admin.firestore();
     const today = new Date().toISOString().substring(0, 10);
     const sentRef = db.collection("sent_notifications");
@@ -392,14 +470,23 @@ export const dailyBest = onSchedule(
       .get();
     if (!existing.empty) return;
 
+    // 캐시에서 읽기 (refreshDailyBest가 3시에 이미 갱신)
+    const cacheDoc = await db.collection("cache").doc("dailyBest").get();
+    let products: ProductJson[] = [];
+    if (cacheDoc.exists) {
+      products = ((cacheDoc.data()?.items as ProductJson[]) ?? []).slice(0, 5);
+    }
+    if (products.length === 0) {
+      products = (await fetchTodayDeals()).slice(0, 5);
+    }
+    if (products.length === 0) return;
+
     const body = products
       .map(
         (d, i) =>
           `${i + 1}. ${d.title} (${Math.round(dropRate(d))}%↓)`
       )
       .join("\n");
-
-    await writeCache("dailyBest", products);
 
     await sendToTopic(
       "dailyBest",
