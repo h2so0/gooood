@@ -124,6 +124,36 @@ class AnalyticsService {
         'theme': isDark ? 'dark' : 'light',
       });
 
+  // ── banner / popup tracking ──
+
+  static Future<void> logCoupangBannerClick() =>
+      _analytics.logEvent(name: 'coupang_banner_click');
+
+  static Future<void> logAnnouncementImpression(String id) =>
+      _analytics.logEvent(name: 'announcement_impression', parameters: {
+        'announcement_id': id,
+      });
+
+  static Future<void> logAnnouncementCtaClick(String id) =>
+      _analytics.logEvent(name: 'announcement_cta_click', parameters: {
+        'announcement_id': id,
+      });
+
+  static Future<void> logAnnouncementClose(String id) =>
+      _analytics.logEvent(name: 'announcement_close', parameters: {
+        'announcement_id': id,
+      });
+
+  static Future<void> logUpdateDialogShown(String version) =>
+      _analytics.logEvent(name: 'update_dialog_shown', parameters: {
+        'version': version,
+      });
+
+  static Future<void> logUpdateButtonClick(String version) =>
+      _analytics.logEvent(name: 'update_button_click', parameters: {
+        'version': version,
+      });
+
   // ── user properties ──
 
   static Future<void> setThemeProperty(bool isDark) =>

@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/startup_popup.dart';
+import 'analytics_service.dart';
+import 'click_tracker.dart';
 
 const _keyAnnouncementShownDate = 'popup_announcement_shown_date';
 const _keyUpdateDismissedVersion = 'popup_update_dismissed_version';
@@ -92,6 +94,8 @@ class StartupPopupService {
     if (shownDate == '${id}_$today') return false;
 
     if (!context.mounted) return false;
+    AnalyticsService.logAnnouncementImpression(id);
+    ClickTracker.track('announcement_impression');
     await showAnnouncementDialog(
       context,
       theme: theme,
@@ -100,6 +104,7 @@ class StartupPopupService {
       imageUrl: announcement['imageUrl'] as String?,
       ctaUrl: announcement['ctaUrl'] as String?,
       ctaLabel: announcement['ctaLabel'] as String?,
+      announcementId: id,
     );
 
     await prefs.setString(_keyAnnouncementShownDate, '${id}_$today');

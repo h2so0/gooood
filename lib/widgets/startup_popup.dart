@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/analytics_service.dart';
+import '../services/click_tracker.dart';
 import '../theme/app_theme.dart';
 
 /// 공지/이벤트 배너 다이얼로그 (프로모션 스타일)
@@ -13,6 +15,7 @@ Future<void> showAnnouncementDialog(
   String? imageUrl,
   String? ctaUrl,
   String? ctaLabel,
+  String? announcementId,
 }) {
   return showDialog(
     context: context,
@@ -75,6 +78,10 @@ Future<void> showAnnouncementDialog(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     child: GestureDetector(
                       onTap: () {
+                        if (announcementId != null) {
+                          AnalyticsService.logAnnouncementCtaClick(announcementId);
+                          ClickTracker.track('announcement_cta');
+                        }
                         Navigator.of(ctx).pop();
                         launchUrl(Uri.parse(ctaUrl),
                             mode: LaunchMode.externalApplication);
@@ -125,7 +132,12 @@ Future<void> showAnnouncementDialog(
               top: 8,
               right: 8,
               child: GestureDetector(
-                onTap: () => Navigator.of(ctx).pop(),
+                onTap: () {
+                  if (announcementId != null) {
+                    AnalyticsService.logAnnouncementClose(announcementId);
+                  }
+                  Navigator.of(ctx).pop();
+                },
                 child: Container(
                   width: 32,
                   height: 32,

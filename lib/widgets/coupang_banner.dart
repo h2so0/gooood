@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/analytics_service.dart';
+import '../services/click_tracker.dart';
 import '../theme/app_theme.dart';
 import '../utils/url_launcher_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,7 +80,11 @@ class CoupangBanner extends ConsumerWidget {
     );
   }
 
-  Future<void> _openCoupang() => launchProductUrl(_coupangUrl);
+  Future<void> _openCoupang() {
+    AnalyticsService.logCoupangBannerClick();
+    ClickTracker.track('coupang');
+    return launchProductUrl(_coupangUrl);
+  }
 }
 
 /// 메이슨리 그리드 안에 삽입되는 세로형 배너 카드
@@ -90,7 +96,11 @@ class CoupangBannerCard extends ConsumerWidget {
     final t = ref.watch(tteolgaThemeProvider);
 
     return GestureDetector(
-      onTap: () => launchProductUrl(CoupangBanner._coupangUrl),
+      onTap: () {
+        AnalyticsService.logCoupangBannerClick();
+        ClickTracker.track('coupang');
+        launchProductUrl(CoupangBanner._coupangUrl);
+      },
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(

@@ -34,6 +34,8 @@ class DeviceProfileSync {
   String? _currentTokenHash;
   bool _initialized = false;
 
+  String? get tokenHash => _currentTokenHash;
+
   /// Call once at app startup (after NotificationService.initialize)
   Future<void> initialize() async {
     if (kIsWeb || _initialized) return;

@@ -52,6 +52,7 @@ import {
 import { fetchLotteonDeals } from "./fetchers/lotteon";
 import { fetchSsgDeals } from "./fetchers/ssg";
 import { refreshFeedData } from "./feed";
+import { aggregateAdminStats } from "./admin";
 
 // SA key secret for FCM authentication in Gen 2 Cloud Functions
 const ADMIN_SA_KEY = defineSecret("ADMIN_SA_KEY");
@@ -994,6 +995,83 @@ export const naverProxy = onRequest(
     } else {
       res.status(400).json({ error: "invalid action: use 'search' or 'trend'" });
     }
+  }
+);
+
+// ── Admin Dashboard ──
+
+export const refreshAdminStats = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    await aggregateAdminStats();
+  }
+);
+
+export const registerAdmin = onRequest(
+  {
+    region: "asia-northeast3",
+    secrets: [ADMIN_AUTH_TOKEN],
+  },
+  async (req, res) => {
+    if (!verifyAdminAuth(req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const tokenHash = req.body?.tokenHash as string | undefined;
+    if (!tokenHash || typeof tokenHash !== "string") {
+      res.status(400).json({ error: "Missing tokenHash in body" });
+      return;
+    }
+
+    await admin.firestore().collection("cache").doc("admin_config").set({
+      adminTokenHash: tokenHash,
+      registeredAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ ok: true, tokenHash });
+  }
+);
+
+export const trackClick = onRequest(
+  {
+    region: "asia-northeast3",
+    cors: true,
+  },
+  async (req, res) => {
+    const type = (req.query.type || req.body?.type) as string | undefined;
+    const validTypes = [
+      "coupang",
+      "announcement_cta",
+      "announcement_impression",
+      "announcement_close",
+      "update_button",
+    ];
+
+    if (!type || !validTypes.includes(type)) {
+      res.status(400).json({ error: "Invalid type" });
+      return;
+    }
+
+    const today = new Date().toISOString().substring(0, 10);
+    await admin
+      .firestore()
+      .collection("cache")
+      .doc("banner_clicks")
+      .set(
+        {
+          [`${type}Total`]: admin.firestore.FieldValue.increment(1),
+          [`${type}_${today}`]: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
+    res.json({ ok: true });
   }
 );
 

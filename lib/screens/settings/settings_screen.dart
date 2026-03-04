@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/admin_provider.dart';
 import '../../providers/viewed_products_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../services/notification_service.dart';
+import 'admin_screen.dart';
 import 'notification_history_sheet.dart';
 import '../legal_screen.dart';
 import '../wishlist/keyword_wishlist_screen.dart';
@@ -183,7 +185,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 28),
 
           // 앱 정보
-          _sectionLabel(t, '앱 정보'),
+          const _AdminGateSection(),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -296,6 +298,59 @@ class SettingsScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => const ViewedProductsSheet(),
+    );
+  }
+}
+
+class _AdminGateSection extends ConsumerStatefulWidget {
+  const _AdminGateSection();
+
+  @override
+  ConsumerState<_AdminGateSection> createState() => _AdminGateSectionState();
+}
+
+class _AdminGateSectionState extends ConsumerState<_AdminGateSection> {
+  final List<DateTime> _taps = [];
+
+  void _onTap() {
+    final now = DateTime.now();
+    _taps.removeWhere(
+        (t) => now.difference(t).inMilliseconds > 3000);
+    _taps.add(now);
+
+    if (_taps.length >= 5) {
+      _taps.clear();
+      _tryOpenAdmin();
+    }
+  }
+
+  Future<void> _tryOpenAdmin() async {
+    try {
+      ref.invalidate(isAdminProvider);
+      final isAdmin = await ref.read(isAdminProvider.future);
+      if (!mounted) return;
+      if (isAdmin) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AdminScreen()),
+        );
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ref.watch(tteolgaThemeProvider);
+    return GestureDetector(
+      onTap: _onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Text('앱 정보',
+            style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+      ),
     );
   }
 }
