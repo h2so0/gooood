@@ -68,20 +68,21 @@ export const DELAYS = {
 // minRatio: 소스에 최소 보장되는 비율 (상품이 충분할 때)
 
 export const SOURCE_QUOTA: Record<string, { maxRatio: number; minRatio: number }> = {
-  best100:      { maxRatio: 0.20, minRatio: 0.05 },
-  todayDeal:    { maxRatio: 0.12, minRatio: 0.03 },
-  shoppingLive: { maxRatio: 0.08, minRatio: 0.02 },
-  naverPromo:   { maxRatio: 0.10, minRatio: 0.02 },
-  "11st":       { maxRatio: 0.12, minRatio: 0.06 },
-  gmarket:      { maxRatio: 0.12, minRatio: 0.06 },
-  auction:      { maxRatio: 0.08, minRatio: 0.03 },
-  lotteon:      { maxRatio: 0.10, minRatio: 0.04 },
-  ssg:          { maxRatio: 0.10, minRatio: 0.04 },
+  best100:      { maxRatio: 0.14, minRatio: 0.04 },
+  todayDeal:    { maxRatio: 0.10, minRatio: 0.03 },
+  shoppingLive: { maxRatio: 0.06, minRatio: 0.02 },
+  naverPromo:   { maxRatio: 0.06, minRatio: 0.02 },
+  "11st":       { maxRatio: 0.10, minRatio: 0.04 },
+  gmarket:      { maxRatio: 0.10, minRatio: 0.04 },
+  auction:      { maxRatio: 0.06, minRatio: 0.02 },
+  lotteon:      { maxRatio: 0.08, minRatio: 0.03 },
+  ssg:          { maxRatio: 0.08, minRatio: 0.03 },
+  coupang:      { maxRatio: 0.28, minRatio: 0.15 },
 };
 
-// 네이버 소스 합계 최대 50%
+// 네이버 소스 합계 최대 40%
 export const NAVER_SOURCES = ["best100", "todayDeal", "shoppingLive", "naverPromo"];
-export const NAVER_MAX_TOTAL_RATIO = 0.50;
-// 외부 소스 합계 최소 30%
-export const EXTERNAL_SOURCES_LIST = ["11st", "gmarket", "auction", "lotteon", "ssg"];
-export const EXTERNAL_MIN_TOTAL_RATIO = 0.30;
+export const NAVER_MAX_TOTAL_RATIO = 0.40;
+// 외부 소스 합계 최소 40% (쿠팡 비중 확대)
+export const EXTERNAL_SOURCES_LIST = ["11st", "gmarket", "auction", "lotteon", "ssg", "coupang"];
+export const EXTERNAL_MIN_TOTAL_RATIO = 0.40;

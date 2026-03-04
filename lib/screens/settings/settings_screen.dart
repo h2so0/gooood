@@ -12,7 +12,7 @@ import 'notification_history_sheet.dart';
 import '../legal_screen.dart';
 import '../wishlist/keyword_wishlist_screen.dart';
 import '../../providers/keyword_wishlist_provider.dart';
-import '../../widgets/coupang_banner.dart';
+
 import '../../widgets/screen_header.dart';
 import 'settings_widgets.dart';
 import 'viewed_products_sheet.dart';
@@ -37,9 +37,6 @@ class SettingsScreen extends ConsumerWidget {
           // 헤더: 뒤로가기 + 제목
           ScreenHeader(theme: t, title: '설정'),
           const SizedBox(height: 16),
-
-          CoupangBanner(),
-          const SizedBox(height: 12),
 
           // 바로가기
           Container(

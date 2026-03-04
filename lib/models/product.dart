@@ -187,6 +187,7 @@ class Product {
     if (id.startsWith('auction_')) return '옥션';
     if (id.startsWith('lotte_')) return '롯데ON';
     if (id.startsWith('ssg_')) return 'SSG';
+    if (id.startsWith('coupang_')) return '쿠팡';
     return mallName;
   }
 
@@ -200,6 +201,7 @@ class Product {
     if (id.startsWith('auction_')) return DealBadge.auction;
     if (id.startsWith('lotte_')) return DealBadge.lotteon;
     if (id.startsWith('ssg_')) return DealBadge.ssg;
+    if (id.startsWith('coupang_')) return DealBadge.coupang;
     return null;
   }
 
@@ -246,7 +248,8 @@ enum DealBadge {
   gmarket('G마켓', 'G마켓'),
   auction('옥션', '옥션'),
   lotteon('롯데ON', '롯데ON'),
-  ssg('SSG', 'SSG');
+  ssg('SSG', 'SSG'),
+  coupang('쿠팡', '쿠팡');
 
   final String label;
   final String shortLabel;

@@ -439,6 +439,8 @@ class SourceTab {
 
 const sourceFilterTabs = <SourceTab>[
   SourceTab('전체', null, null),
+  SourceTab('쿠팡', 'coupang', ['coupang'],
+      colorValue: 0xFFE64B3C, symbol: 'C'),
   SourceTab('네이버', 'best100,todayDeal,shoppingLive,naverPromo',
       ['best100', 'todayDeal', 'shoppingLive', 'naverPromo'],
       colorValue: 0xFF03C75A, symbol: 'N'),

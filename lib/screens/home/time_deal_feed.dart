@@ -7,7 +7,7 @@ import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
 import '../../widgets/product_card.dart';
-import '../../widgets/coupang_banner.dart';
+
 import '../../widgets/skeleton.dart';
 import '../../widgets/sort_button.dart';
 import '../../widgets/pinned_chip_header.dart';
@@ -153,15 +153,11 @@ class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
-                      childCount: BannerMixer.itemCount(products.length),
+                      childCount: products.length,
                       itemBuilder: (context, i) {
-                        if (BannerMixer.isBanner(i)) {
-                          return const CoupangBannerCard();
-                        }
-                        final pi = BannerMixer.productIndex(i);
                         return ProductGridCard(
-                          product: products[pi],
-                          onTap: () => widget.onTap(products[pi]),
+                          product: products[i],
+                          onTap: () => widget.onTap(products[i]),
                         );
                       },
                     ),

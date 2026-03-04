@@ -53,7 +53,8 @@ export function extractRawId(id: string): string | null {
   if (id.startsWith("gmkt_")) return `gmkt_${id.substring(5)}`;
   if (id.startsWith("auction_")) return `auction_${id.substring(8)}`;
   if (id.startsWith("lotte_")) return id; // 롯데ON: ID 그대로 사용
-  if (id.startsWith("ssg_")) return id;   // SSG: ID 그대로 사용
+  if (id.startsWith("ssg_")) return id;       // SSG: ID 그대로 사용
+  if (id.startsWith("coupang_")) return id;  // 쿠팡: ID 그대로 사용
   return null;
 }
 

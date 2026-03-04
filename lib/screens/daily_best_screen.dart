@@ -5,7 +5,7 @@ import '../providers/daily_best_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/product_image.dart';
-import '../widgets/coupang_banner.dart';
+
 import '../widgets/screen_header.dart';
 import 'detail/product_detail_screen.dart';
 
@@ -69,7 +69,6 @@ class DailyBestScreen extends ConsumerWidget {
                     );
                   }),
                   const SizedBox(height: 16),
-                  CoupangBanner(),
                 ],
               );
             },

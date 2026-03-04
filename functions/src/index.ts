@@ -51,12 +51,15 @@ import {
 } from "./fetchers/external";
 import { fetchLotteonDeals } from "./fetchers/lotteon";
 import { fetchSsgDeals } from "./fetchers/ssg";
+import { fetchCoupangDeals } from "./fetchers/coupang";
 import { refreshFeedData } from "./feed";
 import { aggregateAdminStats } from "./admin";
 
 // SA key secret for FCM authentication in Gen 2 Cloud Functions
 const ADMIN_SA_KEY = defineSecret("ADMIN_SA_KEY");
 const ADMIN_AUTH_TOKEN = defineSecret("ADMIN_AUTH_TOKEN");
+const COUPANG_ACCESS_KEY = defineSecret("COUPANG_ACCESS_KEY");
+const COUPANG_SECRET_KEY = defineSecret("COUPANG_SECRET_KEY");
 
 function verifyAdminAuth(req: { headers: Record<string, unknown> }): boolean {
   const authHeader = (req.headers.authorization || "") as string;
@@ -153,6 +156,7 @@ const SYNC_TASKS: {
   { name: "auctionDeals",    fn: fetchAuctionDeals,     key: "auctionDeals",      source: "auction" },
   { name: "lotteonDeals",   fn: fetchLotteonDeals,     key: "lotteonDeals",      source: "lotteon" },
   { name: "ssgDeals",       fn: fetchSsgDeals,         key: "ssgDeals",          source: "ssg" },
+  { name: "coupangDeals",  fn: fetchCoupangDeals,     key: "coupangDeals",      source: "coupang" },
   { name: "keywordRank",     fn: fetchKeywordRank,      key: "keywordRank", keepCache: true },
 ];
 
@@ -321,6 +325,7 @@ const EXTERNAL_SOURCES = [
   { name: "auctionDeals", fn: fetchAuctionDeals, source: "auction" },
   { name: "lotteonDeals", fn: fetchLotteonDeals, source: "lotteon" },
   { name: "ssgDeals", fn: fetchSsgDeals, source: "ssg" },
+  { name: "coupangDeals", fn: fetchCoupangDeals, source: "coupang" },
 ] as const;
 
 export const syncExternalDeals = onSchedule(
@@ -329,7 +334,7 @@ export const syncExternalDeals = onSchedule(
     timeZone: "Asia/Seoul",
     region: "asia-northeast3",
     timeoutSeconds: 120,
-    secrets: ["GEMINI_API_KEY"],
+    secrets: ["GEMINI_API_KEY", COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY],
   },
   async () => {
     for (let i = 0; i < EXTERNAL_SOURCES.length; i++) {
@@ -342,6 +347,26 @@ export const syncExternalDeals = onSchedule(
         console.error(`Failed ${name}:`, e);
       }
       if (i < EXTERNAL_SOURCES.length - 1) await sleep(DELAYS.EXTERNAL_BETWEEN);
+    }
+  }
+);
+
+// ── 매일 7:05 AM KST: 쿠팡 골드박스 새 상품 즉시 갱신 ──
+export const syncCoupangGoldbox = onSchedule(
+  {
+    schedule: "5 7 * * *",
+    timeZone: "Asia/Seoul",
+    region: "asia-northeast3",
+    timeoutSeconds: 60,
+    secrets: ["GEMINI_API_KEY", COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY],
+  },
+  async () => {
+    try {
+      const products = await fetchCoupangDeals();
+      await writeProducts(products, "coupang", { deleteStale: true });
+      console.log(`[syncCoupangGoldbox] 7AM refresh: ${products.length} coupang products`);
+    } catch (e) {
+      console.error("[syncCoupangGoldbox] error:", e);
     }
   }
 );
@@ -711,7 +736,7 @@ export const manualSync = onRequest(
   {
     region: "asia-northeast3",
     timeoutSeconds: 540,
-    secrets: ["GEMINI_API_KEY", ADMIN_SA_KEY, ADMIN_AUTH_TOKEN],
+    secrets: ["GEMINI_API_KEY", ADMIN_SA_KEY, ADMIN_AUTH_TOKEN, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY],
   },
   async (_req, res) => {
     if (!verifyAdminAuth(_req)) {
@@ -1088,6 +1113,13 @@ const IMAGE_PROXY_ALLOWED_HOSTS = new Set([
   "shop-phinf.pstatic.net",
   "sitem.ssgcdn.com",
   "image-cdn.hypb.st",
+  "static.coupangcdn.com",
+  "thumbnail6.coupangcdn.com",
+  "thumbnail7.coupangcdn.com",
+  "thumbnail8.coupangcdn.com",
+  "thumbnail9.coupangcdn.com",
+  "thumbnail10.coupangcdn.com",
+  "image1.coupangcdn.com",
 ]);
 
 export const imageProxy = onRequest(

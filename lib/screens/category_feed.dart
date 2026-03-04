@@ -7,7 +7,7 @@ import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../providers/product_list_provider.dart';
 import '../widgets/product_card.dart';
-import '../widgets/coupang_banner.dart';
+
 import '../constants/app_constants.dart';
 import '../widgets/pinned_chip_header.dart';
 import '../widgets/skeleton.dart';
@@ -211,15 +211,11 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                     crossAxisCount: 2,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childCount: BannerMixer.itemCount(items.length),
+                    childCount: items.length,
                     itemBuilder: (context, i) {
-                      if (BannerMixer.isBanner(i)) {
-                        return const CoupangBannerCard();
-                      }
-                      final pi = BannerMixer.productIndex(i);
                       return ProductGridCard(
-                        product: items[pi],
-                        onTap: () => widget.onTap(items[pi]),
+                        product: items[i],
+                        onTap: () => widget.onTap(items[i]),
                       );
                     },
                   ),

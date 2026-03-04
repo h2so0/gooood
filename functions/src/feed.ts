@@ -95,7 +95,7 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
     }
   }
 
-  // 2b) 외부 소스 최소 합계 보장
+  // 2b) 외부 소스 최소 합계 보장 (쿠팡 우선 배분)
   const externalAllocated = EXTERNAL_SOURCES_LIST.reduce(
     (sum, src) => sum + (allocation.get(src) || 0), 0
   );
@@ -103,7 +103,9 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
   if (externalAllocated < externalMin) {
     const deficit = externalMin - externalAllocated;
     let remaining = deficit;
-    for (const src of EXTERNAL_SOURCES_LIST) {
+    // 쿠팡을 맨 앞으로 → 부족분 우선 충당
+    const externalPriority = ["coupang", ...EXTERNAL_SOURCES_LIST.filter((s) => s !== "coupang")];
+    for (const src of externalPriority) {
       if (remaining <= 0) break;
       const list = groups.get(src);
       if (!list) continue;

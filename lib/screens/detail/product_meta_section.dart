@@ -24,7 +24,7 @@ class RankRow extends StatelessWidget {
           Icon(Icons.emoji_events_outlined, size: 16, color: t.star),
           const SizedBox(width: 8),
           Text(
-            '네이버 BEST #${product.rank}',
+            '${product.displayMallName} BEST #${product.rank}',
             style: TextStyle(
               color: t.textPrimary,
               fontSize: 14,
@@ -110,7 +110,9 @@ class DeliveryRow extends StatelessWidget {
     final t = theme;
     final items = <String>[];
     if (product.isDeliveryFree) items.add('무료배송');
-    if (product.isArrivalGuarantee) items.add('도착보장');
+    if (product.isArrivalGuarantee) {
+      items.add(product.id.startsWith('coupang_') ? '로켓배송' : '도착보장');
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
