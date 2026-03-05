@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../models/product.dart';
 import '../models/sort_option.dart';
 import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../providers/product_list_provider.dart';
-import '../widgets/product_card.dart';
+import '../widgets/feed_helpers.dart';
 
 import '../constants/app_constants.dart';
 import '../widgets/pinned_chip_header.dart';
@@ -28,6 +27,7 @@ class CategoryFeed extends ConsumerStatefulWidget {
 class _CategoryFeedState extends ConsumerState<CategoryFeed> {
   ScrollController get _scrollController => widget.scrollController;
   String? _selectedSubCategory;
+  late final VoidCallback _scrollListener;
   CategoryFilter get _filter => CategoryFilter(
         category: widget.category,
         subCategory: _selectedSubCategory,
@@ -36,7 +36,9 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    _scrollListener =
+        infiniteScrollListener(_scrollController, _fetchNextPageCurrent);
+    _scrollController.addListener(_scrollListener);
   }
 
   @override
@@ -49,15 +51,8 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
+    _scrollController.removeListener(_scrollListener);
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 500) {
-      _fetchNextPageCurrent();
-    }
   }
 
   void _fetchNextPageCurrent() {
@@ -108,91 +103,63 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                 parent: BouncingScrollPhysics()),
             slivers: [
               // 서브카테고리 칩
-              if (subs.isNotEmpty)
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: PinnedChipHeaderDelegate(
-                    itemCount: subs.length + 1,
-                    selectedIndex: _selectedSubCategory == null
-                        ? 0
-                        : subs.indexOf(_selectedSubCategory!) + 1,
-                    onSelected: (i) {
-                      final label = i == 0 ? null : subs[i - 1];
-                      if (label == _selectedSubCategory) {
-                        if (_scrollController.hasClients) {
-                          _scrollController.animateTo(0,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut);
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: PinnedChipHeaderDelegate(
+                  itemCount: subs.isNotEmpty ? subs.length + 1 : 1,
+                  selectedIndex: subs.isNotEmpty
+                      ? (_selectedSubCategory == null
+                          ? 0
+                          : subs.indexOf(_selectedSubCategory!) + 1)
+                      : 0,
+                  onSelected: subs.isNotEmpty
+                      ? (i) {
+                          final label = i == 0 ? null : subs[i - 1];
+                          if (label == _selectedSubCategory) {
+                            if (_scrollController.hasClients) {
+                              _scrollController.animateTo(0,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOut);
+                            }
+                            return;
+                          }
+                          setState(() => _selectedSubCategory = label);
+                          if (_scrollController.hasClients) {
+                            _scrollController.jumpTo(0);
+                          }
+                          AnalyticsService.logSubCategoryFilter(
+                              widget.category, label);
                         }
-                        return;
-                      }
-                      setState(() => _selectedSubCategory = label);
+                      : (_) {},
+                  theme: t,
+                  trailingWidget: SortChip(
+                    current: sort,
+                    theme: t,
+                    onChanged: (opt) {
+                      ref.read(categorySortProvider(widget.category).notifier).state = opt;
+                      AnalyticsService.logSortChanged(widget.category, opt.label);
                       if (_scrollController.hasClients) {
                         _scrollController.jumpTo(0);
                       }
-                      AnalyticsService.logSubCategoryFilter(
-                          widget.category, label);
-                    },
-                    theme: t,
-                    trailingWidget: SortChip(
-                      current: sort,
-                      theme: t,
-                      onChanged: (opt) {
-                        ref.read(categorySortProvider(widget.category).notifier).state = opt;
-                        AnalyticsService.logSortChanged(widget.category, opt.label);
-                        if (_scrollController.hasClients) {
-                          _scrollController.jumpTo(0);
-                        }
-                      },
-                    ),
-                    chipContentBuilder: (i, selected) {
-                      final label = i == 0 ? '전체' : subs[i - 1];
-                      return AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                          color: selected ? t.bg : t.textSecondary,
-                          letterSpacing: -0.2,
-                        ),
-                        child: Text(label),
-                      );
                     },
                   ),
+                  chipContentBuilder: (i, selected) {
+                    final label = subs.isNotEmpty
+                        ? (i == 0 ? '전체' : subs[i - 1])
+                        : '전체';
+                    return AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        color: selected ? t.bg : t.textSecondary,
+                        letterSpacing: -0.2,
+                      ),
+                      child: Text(label),
+                    );
+                  },
                 ),
-              if (subs.isEmpty)
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: PinnedChipHeaderDelegate(
-                    itemCount: 1,
-                    selectedIndex: 0,
-                    onSelected: (_) {},
-                    theme: t,
-                    trailingWidget: SortChip(
-                      current: sort,
-                      theme: t,
-                      onChanged: (opt) {
-                        ref.read(categorySortProvider(widget.category).notifier).state = opt;
-                        AnalyticsService.logSortChanged(widget.category, opt.label);
-                        if (_scrollController.hasClients) {
-                          _scrollController.jumpTo(0);
-                        }
-                      },
-                    ),
-                    chipContentBuilder: (_, selected) {
-                      return AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: t.bg,
-                          letterSpacing: -0.2,
-                        ),
-                        child: Text('전체'),
-                      );
-                    },
-                  ),
-                ),
+              ),
               if (items.isEmpty && currentState.isLoading)
                 SliverFillRemaining(
                   child: SkeletonProductGrid(theme: t),
@@ -204,35 +171,13 @@ class _CategoryFeedState extends ConsumerState<CategoryFeed> {
                         style: TextStyle(color: t.textTertiary)),
                   ),
                 )
-              else ...[
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: SliverMasonryGrid.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childCount: items.length,
-                    itemBuilder: (context, i) {
-                      return ProductGridCard(
-                        product: items[i],
-                        onTap: () => widget.onTap(items[i]),
-                      );
-                    },
-                  ),
+              else
+                ...productGridSlivers(
+                  products: items,
+                  state: currentState,
+                  onTap: widget.onTap,
+                  loadingColor: t.textTertiary,
                 ),
-                if (currentState.isLoading && currentState.hasMore)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                          child:
-                              CircularProgressIndicator(color: t.textTertiary)),
-                    ),
-                  ),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 40),
-                ),
-              ],
             ],
           ),
         ),

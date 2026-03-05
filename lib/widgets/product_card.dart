@@ -127,7 +127,7 @@ class ProductGridCard extends ConsumerWidget {
   }
 }
 
-/// 실시간 카운트다운 뱃지 (30일 이내만 표시)
+/// 실시간 카운트다운 뱃지
 class _CountdownBadge extends StatefulWidget {
   final String saleEndDate;
   const _CountdownBadge({required this.saleEndDate});
@@ -166,12 +166,14 @@ class _CountdownBadgeState extends State<_CountdownBadge> {
   @override
   Widget build(BuildContext context) {
     if (_endTime == null) return const SizedBox.shrink();
-    if (_remaining.isNegative || _remaining.inDays > 30) {
-      return const SizedBox.shrink();
-    }
+    if (_remaining.isNegative) return const SizedBox.shrink();
 
     final String text;
-    if (_remaining.inDays > 0) {
+    if (_remaining.inDays > 30) {
+      // 30일 초과: M/d 마감 형태
+      final end = _endTime!;
+      text = '${end.month}/${end.day} 마감';
+    } else if (_remaining.inDays > 0) {
       final h = _remaining.inHours % 24;
       final m = _remaining.inMinutes % 60;
       text = '${_remaining.inDays}일 ${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';

@@ -10,9 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
-import 'constants/app_constants.dart';
 import 'models/product.dart';
 import 'providers/notification_provider.dart';
+import 'constants/app_constants.dart';
 import 'providers/keyword_wishlist_provider.dart';
 import 'providers/keyword_price_provider.dart';
 import 'services/analytics_service.dart';
@@ -34,7 +34,7 @@ void main() async {
   try {
     await Future.wait([
       initializeDateFormatting('ko_KR'),
-      Hive.initFlutter(),
+      Hive.initFlutter().then((_) => Hive.openBox<String>('feed_cache')),
       Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
           .then((_) => _firebaseInitialized = true),
     ]);
@@ -47,32 +47,11 @@ void main() async {
       );
     }
 
-    // SWR용 Hive box 사전 오픈
-    await Hive.openBox('feed_cache');
   } catch (e) {
     debugPrint('[Init] Initialization error: $e');
   }
 
-  // 스플래시 중 Firestore pre-fetch (fire-and-forget)
-  if (_firebaseInitialized) {
-    _prefetchHotProducts();
-  }
-
   runApp(const ProviderScope(child: TteolgaApp()));
-}
-
-/// 스플래시 중 Firestore 쿼리를 미리 실행해 SDK 내부 캐시 워밍업 (fire-and-forget)
-void _prefetchHotProducts() {
-  FirebaseFirestore.instance
-      .collection('products')
-      .where('feedOrder', isGreaterThanOrEqualTo: 0)
-      .orderBy('feedOrder')
-      .limit(PaginationConfig.pageSize)
-      .get()
-      .then((_) {})
-      .catchError((e) {
-    debugPrint('[Prefetch] hot products fetch error: $e');
-  });
 }
 
 class TteolgaApp extends ConsumerStatefulWidget {
@@ -92,10 +71,14 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb && _firebaseInitialized) {
-      _initializeServices(); // fire-and-forget (비차단)
       _setupNotificationHandlers();
-      _checkFirstPermission();
-      _triggerDailyKeywordCollection();
+      // 피드 로딩과 경쟁하지 않도록 서비스 초기화 지연
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        _initializeServices();
+        _checkFirstPermission();
+        _triggerDailyKeywordCollection();
+      });
     }
   }
 
@@ -247,12 +230,6 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
 
   static final _validProductId = RegExp(r'^[\w\-:.]{1,128}$');
 
-  /// 탭 이름 목록 (MainScreen._tabs와 동일 순서)
-  static const _tabNames = [
-    '홈', '타임딜',
-    '디지털/가전', '패션/의류', '생활/건강', '식품', '뷰티', '스포츠/레저', '출산/육아',
-  ];
-
   int _resolveTabIndex(Product product) {
     // 타임딜: saleEndDate가 미래이면 타임딜 탭
     if (product.saleEndDate != null) {
@@ -265,8 +242,8 @@ class _TteolgaAppState extends ConsumerState<TteolgaApp>
     // 카테고리 매핑
     final cat = product.category1;
     if (cat.isNotEmpty) {
-      for (int i = 2; i < _tabNames.length; i++) {
-        if (_tabNames[i] == cat) return i;
+      for (int i = 2; i < tabNames.length; i++) {
+        if (tabNames[i] == cat) return i;
       }
     }
     return 0; // 기본: 홈

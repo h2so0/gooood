@@ -62,7 +62,8 @@ interface SsgItem {
 function parseSsgProduct(
   item: SsgItem,
   seenIds: Set<string>,
-  categoryHint?: string
+  categoryHint?: string,
+  isTimeDeal = true
 ): ProductJson | null {
   const itemId = item.itemId;
   if (!itemId || seenIds.has(itemId)) return null;
@@ -91,8 +92,8 @@ function parseSsgProduct(
   );
 
   let saleEndDate: string | null = null;
-  if (item.dispEndDts) {
-    // "YYYYMMDDHHmmss" → ISO
+  if (isTimeDeal && item.dispEndDts) {
+    // "YYYYMMDDHHmmss" → ISO (타임딜만 설정, 랭킹 상품은 제외)
     const s = item.dispEndDts;
     if (s.length >= 14) {
       saleEndDate = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}+09:00`;
@@ -152,7 +153,8 @@ async function fetchPageArea(
   pageCmptId: string,
   dispCtgId: string,
   seenIds: Set<string>,
-  categoryHint?: string
+  categoryHint?: string,
+  isTimeDeal = true
 ): Promise<ProductJson[]> {
   const products: ProductJson[] = [];
   try {
@@ -186,7 +188,7 @@ async function fetchPageArea(
     const json = (await res.json()) as any;
     const rawItems = extractItems(json);
     for (const item of rawItems) {
-      const product = parseSsgProduct(item, seenIds, categoryHint);
+      const product = parseSsgProduct(item, seenIds, categoryHint, isTimeDeal);
       if (product) products.push(product);
     }
     console.log(`[SSG] pageArea ${pageId}/${dispCtgId}: ${rawItems.length} raw, ${products.length} new`);
@@ -285,7 +287,7 @@ async function fetchSsgRanking(
   for (const catId of RANKING_CATEGORIES) {
     const hint = SSG_CATEGORY_NAMES[catId] || undefined;
     const items = await fetchPageArea(
-      "100000007532", "2", "4", catId, seenIds, hint
+      "100000007532", "2", "4", catId, seenIds, hint, false
     );
     products.push(...items);
     if (catId !== RANKING_CATEGORIES[RANKING_CATEGORIES.length - 1]) {

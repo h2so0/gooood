@@ -268,7 +268,7 @@ async function generateAllKeywords(
 export async function writeProducts(
   products: ProductJson[],
   source: string,
-  options?: { deleteStale?: boolean }
+  options?: { deleteStale?: boolean; forceReclassify?: boolean }
 ): Promise<number> {
   if (products.length === 0) return 0;
 
@@ -276,6 +276,13 @@ export async function writeProducts(
   const db = admin.firestore();
 
   const { existingCategoryMap, existingKeywordsMap } = await loadExistingData(unique, db);
+
+  // forceReclassify: 기존 분류 캐시 무시 → 전부 재분류
+  if (options?.forceReclassify) {
+    existingCategoryMap.clear();
+    console.log(`[writeProducts] ${source}: forceReclassify — ignoring cached classifications`);
+  }
+
   const classifyResult = await classifyAll(unique, existingCategoryMap);
   const keywordsResult = await generateAllKeywords(unique, existingKeywordsMap);
 

@@ -66,8 +66,8 @@ function verifyAdminAuth(req: { headers: Record<string, unknown> }): boolean {
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)
     : "";
-  const expected = process.env.ADMIN_AUTH_TOKEN;
-  return !!expected && token === expected;
+  const expected = (process.env.ADMIN_AUTH_TOKEN || "").trim();
+  return !!expected && token.trim() === expected;
 }
 
 // Initialize with explicit credential if SA key is available (fixes FCM auth in Cloud Run)
@@ -341,7 +341,9 @@ export const syncExternalDeals = onSchedule(
       const { name, fn, source } = EXTERNAL_SOURCES[i];
       try {
         const products = await fn();
-        await writeProducts(products, source, { deleteStale: true });
+        // 쿠팡: BestCategories 카테고리 힌트가 실제 상품 카테고리와 다를 수 있으므로 항상 재분류
+        const forceReclassify = source === "coupang";
+        await writeProducts(products, source, { deleteStale: true, forceReclassify });
         console.log(`Synced ${name}: ${products.length}`);
       } catch (e) {
         console.error(`Failed ${name}:`, e);
@@ -363,7 +365,7 @@ export const syncCoupangGoldbox = onSchedule(
   async () => {
     try {
       const products = await fetchCoupangDeals();
-      await writeProducts(products, "coupang", { deleteStale: true });
+      await writeProducts(products, "coupang", { deleteStale: true, forceReclassify: true });
       console.log(`[syncCoupangGoldbox] 7AM refresh: ${products.length} coupang products`);
     } catch (e) {
       console.error("[syncCoupangGoldbox] error:", e);
@@ -753,7 +755,8 @@ export const manualSync = onRequest(
           await writeCache(task.key, items);
         }
         if (task.source) {
-          await writeProducts(items as ProductJson[], task.source, { deleteStale: true });
+          const forceReclassify = task.source === "coupang";
+          await writeProducts(items as ProductJson[], task.source, { deleteStale: true, forceReclassify });
         }
         results.push(`${task.name}: ${items.length}`);
       } catch (e) {
@@ -1147,7 +1150,8 @@ export const imageProxy = onRequest(
       return;
     }
 
-    if (!IMAGE_PROXY_ALLOWED_HOSTS.has(parsed.hostname)) {
+    if (!IMAGE_PROXY_ALLOWED_HOSTS.has(parsed.hostname) &&
+      !parsed.hostname.endsWith(".coupangcdn.com")) {
       res.status(403).send("Host not allowed");
       return;
     }

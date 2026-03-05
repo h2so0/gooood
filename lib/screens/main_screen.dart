@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_constants.dart';
 import '../services/analytics_service.dart';
 import '../theme/app_theme.dart';
 import '../models/product.dart';
@@ -34,17 +35,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
   late final List<ScrollController> _scrollControllers;
 
-  static const _tabs = [
-    '홈',
-    '타임딜',
-    '디지털/가전',
-    '패션/의류',
-    '생활/건강',
-    '식품',
-    '뷰티',
-    '스포츠/레저',
-    '출산/육아',
-  ];
+  static const _tabs = tabNames;
 
   late final List<void Function()> _scrollListeners;
 
@@ -86,14 +77,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Future<void> _prefetchTabs() async {
-    await Future.delayed(const Duration(seconds: 1));
+    // 홈 피드 로딩 완료 후 다른 탭 점진적 빌드 (메인 쿼리 경쟁 방지)
+    await Future.delayed(const Duration(seconds: 2));
     for (int i = 1; i < _tabs.length; i += 2) {
       if (!mounted) return;
       setState(() {
         _visitedTabs.add(i);
         if (i + 1 < _tabs.length) _visitedTabs.add(i + 1);
       });
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 300));
     }
   }
 
@@ -131,118 +123,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         children: [
           SizedBox(height: topPadding + 6),
 
-          // Search bar + 인기 키워드 통합 (스크롤 시 숨김)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            height: _showSearchBar ? 52 : 0,
-            clipBehavior: Clip.hardEdge,
-            decoration: const BoxDecoration(),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => const SearchScreen()),
-                      ),
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: t.card,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: t.border, width: 0.5),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.search,
-                                color: t.textTertiary, size: 20),
-                            const SizedBox(width: 10),
-                            // 인기 키워드 롤링 (모든 탭 공통)
-                            Expanded(
-                              child: Consumer(builder: (context, ref, _) {
-                                final trendAsync =
-                                    ref.watch(trendKeywordsProvider);
-                                return trendAsync.when(
-                                  data: (keywords) {
-                                    if (keywords.isEmpty) {
-                                      return Text('상품명을 검색하세요',
-                                          style: TextStyle(
-                                              color: t.textTertiary,
-                                              fontSize: 14));
-                                    }
-                                    return RollingKeywords(
-                                      keywords: keywords,
-                                      onTap: (keyword) {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                SearchScreen(initialQuery: keyword, autofocus: false),
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  },
-                                  loading: () => Text('상품명을 검색하세요',
-                                      style: TextStyle(
-                                          color: t.textTertiary,
-                                          fontSize: 14)),
-                                  error: (_, _) => Text('상품명을 검색하세요',
-                                      style: TextStyle(
-                                          color: t.textTertiary,
-                                          fontSize: 14)),
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // 오늘의 BEST 버튼
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const DailyBestScreen()),
-                    ),
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: t.border, width: 0.5),
-                      ),
-                      child: Icon(Icons.emoji_events_outlined,
-                          color: t.textTertiary, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const SettingsScreen()),
-                    ),
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: t.border, width: 0.5),
-                      ),
-                      child: Icon(Icons.settings_outlined,
-                          color: t.textTertiary, size: 20),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _buildSearchBar(t),
 
           // Category tabs — underline style
           SizedBox(
@@ -365,6 +246,97 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(dynamic t) {
+    final placeholderStyle = TextStyle(color: t.textTertiary, fontSize: 14);
+    const placeholder = '상품명을 검색하세요';
+
+    Widget iconButton(IconData icon, Widget screen) => GestureDetector(
+          onTap: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => screen)),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: t.border, width: 0.5),
+            ),
+            child: Icon(icon, color: t.textTertiary, size: 20),
+          ),
+        );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      height: _showSearchBar ? 52 : 0,
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                ),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: t.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: t.border, width: 0.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, color: t.textTertiary, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Consumer(builder: (context, ref, _) {
+                          final trendAsync =
+                              ref.watch(trendKeywordsProvider);
+                          return trendAsync.when(
+                            data: (keywords) {
+                              if (keywords.isEmpty) {
+                                return Text(placeholder,
+                                    style: placeholderStyle);
+                              }
+                              return RollingKeywords(
+                                keywords: keywords,
+                                onTap: (keyword) {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => SearchScreen(
+                                          initialQuery: keyword,
+                                          autofocus: false),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                            loading: () =>
+                                Text(placeholder, style: placeholderStyle),
+                            error: (_, _) =>
+                                Text(placeholder, style: placeholderStyle),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            iconButton(Icons.emoji_events_outlined, const DailyBestScreen()),
+            const SizedBox(width: 10),
+            iconButton(Icons.settings_outlined, const SettingsScreen()),
+          ],
+        ),
       ),
     );
   }

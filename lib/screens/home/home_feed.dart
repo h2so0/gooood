@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
 import '../../models/sort_option.dart';
 import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
 import '../../providers/trend_provider.dart';
-import '../../widgets/product_card.dart';
+import '../../widgets/feed_helpers.dart';
 
 import '../../widgets/skeleton.dart';
 import '../../widgets/pinned_chip_header.dart';
@@ -26,16 +25,21 @@ class HomeFeed extends ConsumerStatefulWidget {
 class _HomeFeedState extends ConsumerState<HomeFeed> {
   int _selectedSourceIndex = 0;
   ScrollController get _scrollController => widget.scrollController;
+  late final VoidCallback _scrollListener;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    _prefetchSourceTabs();
+    _scrollListener =
+        infiniteScrollListener(_scrollController, _fetchNextPageCurrent);
+    _scrollController.addListener(_scrollListener);
+    // 홈 피드 로딩 완료 후 판매처 탭 프리페치 (메인 쿼리와 경쟁 방지)
+    Future.delayed(const Duration(milliseconds: 1500), _prefetchSourceTabs);
   }
 
   /// 판매처 탭 데이터를 백그라운드에서 미리 로드
   void _prefetchSourceTabs() {
+    if (!mounted) return;
     for (final tab in sourceFilterTabs) {
       if (tab.sourceKey != null) {
         ref.read(sourceFilteredProductsProvider(tab.sourceKey!));
@@ -45,15 +49,8 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
+    _scrollController.removeListener(_scrollListener);
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 500) {
-      _fetchNextPageCurrent();
-    }
   }
 
   ProductListState _watchCurrentState(WidgetRef ref, SortOption sort) {
@@ -224,33 +221,12 @@ class _HomeFeedState extends ConsumerState<HomeFeed> {
                     ),
                   )
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverMasonryGrid.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childCount: products.length,
-                      itemBuilder: (context, i) {
-                        return ProductGridCard(
-                          product: products[i],
-                          onTap: () => widget.onTap(products[i]),
-                        );
-                      },
-                    ),
+                  ...productGridSlivers(
+                    products: products,
+                    state: currentState,
+                    onTap: widget.onTap,
+                    loadingColor: t.textTertiary,
                   ),
-                if (currentState.isLoading &&
-                    currentState.hasMore &&
-                    products.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                          child:
-                              CircularProgressIndicator(color: t.textTertiary)),
-                    ),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ],
           ),

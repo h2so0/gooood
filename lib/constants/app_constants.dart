@@ -1,3 +1,16 @@
+/// 앱 탭 이름 목록 (MainScreen, TteolgaApp에서 공유)
+const tabNames = <String>[
+  '홈',
+  '타임딜',
+  '디지털/가전',
+  '패션/의류',
+  '생활/건강',
+  '식품',
+  '뷰티',
+  '스포츠/레저',
+  '출산/육아',
+];
+
 /// 네이버 쇼핑 카테고리 코드 (단일 소스)
 const shoppingCategoryIds = <String, String>{
   '디지털/가전': '50000003',

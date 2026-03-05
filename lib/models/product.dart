@@ -169,6 +169,9 @@ class Product {
   @override
   int get hashCode => id.hashCode;
 
+  /// 쿠팡 골드박스 상품 여부 (saleEndDate가 있는 쿠팡 상품)
+  bool get isGoldbox => id.startsWith('coupang_') && saleEndDate != null;
+
   double get dropRate {
     if (previousPrice == null || previousPrice == 0) return 0;
     return ((previousPrice! - currentPrice) / previousPrice!) * 100;

@@ -27,6 +27,44 @@ function fisherYatesShuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+/**
+ * 라운드 로빈 셔플: 소스별 1개씩 번갈아 배치.
+ * 상단은 모든 소스 골고루, 소수 소스가 소진되면 남은 소스가 하단 채움.
+ */
+function roundRobinShuffle<T extends HasSource>(items: T[]): T[] {
+  // 1) 소스별 그룹핑 + 내부 셔플
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const src = item.source || "other";
+    if (!groups.has(src)) groups.set(src, []);
+    groups.get(src)!.push(item);
+  }
+
+  for (const [, list] of groups) {
+    const shuffled = fisherYatesShuffle(list);
+    list.length = 0;
+    list.push(...shuffled);
+  }
+
+  // 2) 라운드 로빈: 매 라운드 각 소스에서 1개씩
+  const result: T[] = [];
+  const sources = Array.from(groups.values()).map((g) => ({ items: g, idx: 0 }));
+
+  let anyLeft = true;
+  while (anyLeft) {
+    anyLeft = false;
+    for (const src of sources) {
+      if (src.idx < src.items.length) {
+        result.push(src.items[src.idx]);
+        src.idx++;
+        anyLeft = true;
+      }
+    }
+  }
+
+  return result;
+}
+
 function balancedShuffle<T extends HasSource>(items: T[]): T[] {
   // 1) 소스별 그룹핑
   const groups = new Map<string, T[]>();
@@ -63,7 +101,10 @@ function balancedShuffle<T extends HasSource>(items: T[]): T[] {
 // balancedShuffleWithQuota: 소스별 최소/최대 쿼터 적용 + 라운드 로빈
 // ──────────────────────────────────────────
 
-function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
+function balancedShuffleWithQuota<T extends HasSource>(
+  items: T[],
+  options?: { strictQuota?: boolean }
+): T[] {
   const total = items.length;
   if (total === 0) return [];
 
@@ -156,7 +197,8 @@ function balancedShuffleWithQuota<T extends HasSource>(items: T[]): T[] {
   }
 
   // 남은 슬롯은 네이버 cap을 유지하면서 채움 (cap 초과 허용 안 함)
-  if (freeSlots > 0) {
+  // strictQuota: maxRatio 초과 채움 생략 (타임딜 등 다양성 우선)
+  if (!options?.strictQuota && freeSlots > 0) {
     for (const [src, list] of groups) {
       if (freeSlots <= 0) break;
       const current = allocation.get(src) || 0;
@@ -209,7 +251,7 @@ export async function refreshFeedData(): Promise<void> {
   const snap = await db
     .collection("products")
     .where("dropRate", ">=", 0)
-    .select("source", "category", "dropRate")
+    .select("source", "category", "dropRate", "saleEndDate")
     .get();
 
   if (snap.empty) {
@@ -254,7 +296,25 @@ export async function refreshFeedData(): Promise<void> {
     });
   }
 
-  // 4) 500개 단위 batch update
+  // 4) 타임딜 feedOrder: saleEndDate가 유효한 상품만 소스별 골고루 셔플
+  const nowIso = new Date().toISOString();
+  const timeDealDocs = allDocs
+    .filter((d) => {
+      const sd = d.data.saleEndDate as string | undefined;
+      return sd && sd > nowIso;
+    })
+    .map((d) => d.data);
+
+  const timeDealOrderMap = new Map<string, number>();
+  if (timeDealDocs.length > 0) {
+    const tdShuffled = roundRobinShuffle(timeDealDocs);
+    tdShuffled.forEach((item, idx) => {
+      timeDealOrderMap.set(item.id, idx);
+    });
+    console.log(`[refreshFeedData] timeDeal: ${timeDealDocs.length} products shuffled`);
+  }
+
+  // 5) 500개 단위 batch update
   const chunks: typeof allDocs[] = [];
   for (let i = 0; i < allDocs.length; i += FIRESTORE_BATCH_LIMIT) {
     chunks.push(allDocs.slice(i, i + FIRESTORE_BATCH_LIMIT));
@@ -266,7 +326,8 @@ export async function refreshFeedData(): Promise<void> {
     for (const { ref, data } of chunk) {
       const feedOrder = globalOrderMap.get(data.id) ?? -1;
       const categoryFeedOrder = categoryOrderMap.get(data.id) ?? -1;
-      batch.update(ref, { feedOrder, categoryFeedOrder });
+      const timeDealFeedOrder = timeDealOrderMap.get(data.id) ?? -1;
+      batch.update(ref, { feedOrder, categoryFeedOrder, timeDealFeedOrder });
     }
     await batch.commit();
     updated += chunk.length;

@@ -218,7 +218,8 @@ function parseCoupangProduct(
   let imageUrl = item.productImage || "";
   if (imageUrl.startsWith("//")) imageUrl = "https:" + imageUrl;
 
-  const categoryName = categoryHint || item.categoryName || "쿠팡";
+  // 상품 자체의 categoryName 우선, BestCategories 힌트는 폴백
+  const categoryName = item.categoryName || categoryHint || "쿠팡";
 
   // mapToAppCategory로 앱 카테고리 매핑 시도
   const catResult = mapToAppCategory(categoryName);

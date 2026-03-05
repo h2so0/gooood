@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../models/product.dart';
 import '../../models/sort_option.dart';
 import '../../services/analytics_service.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/product_list_provider.dart';
-import '../../widgets/product_card.dart';
+import '../../widgets/feed_helpers.dart';
 
 import '../../widgets/skeleton.dart';
 import '../../widgets/sort_button.dart';
@@ -25,24 +24,22 @@ class TimeDealFeed extends ConsumerStatefulWidget {
 
 class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
   ScrollController get _scrollController => widget.scrollController;
+  late final VoidCallback _scrollListener;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    _scrollListener = infiniteScrollListener(
+      _scrollController,
+      () => ref.read(timeDealProductsProvider.notifier).fetchNextPage(),
+    );
+    _scrollController.addListener(_scrollListener);
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
+    _scrollController.removeListener(_scrollListener);
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 500) {
-      ref.read(timeDealProductsProvider.notifier).fetchNextPage();
-    }
   }
 
   @override
@@ -51,16 +48,21 @@ class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
     final sort = ref.watch(timeDealSortProvider);
     final currentState = ref.watch(timeDealProductsProvider);
 
-    // 타임딜은 기본이 마감임박순. 클라이언트 정렬만 적용.
-    // 추천순일 때는 판매처 인터리빙으로 골고루 분배.
+    // 서버에서 소스별 골고루 셔플된 timeDealFeedOrder 순으로 가져옴.
+    // 만료된 상품은 클라이언트에서 필터링.
+    final now = DateTime.now().toIso8601String();
+    final active = currentState.products
+        .where((p) => p.saleEndDate == null || p.saleEndDate!.compareTo(now) > 0)
+        .toList();
+
     final List<Product> products;
     if (sort == SortOption.priceLow ||
         sort == SortOption.priceHigh ||
         sort == SortOption.review ||
         sort == SortOption.dropRate) {
-      products = applySortOption(currentState.products, sort);
+      products = applySortOption(active, sort);
     } else {
-      products = interleaveByMall(currentState.products);
+      products = active; // 이미 서버에서 소스별 셔플됨
     }
 
     final isInitialLoading = products.isEmpty && currentState.isLoading;
@@ -147,33 +149,12 @@ class _TimeDealFeedState extends ConsumerState<TimeDealFeed> {
                     ),
                   )
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverMasonryGrid.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childCount: products.length,
-                      itemBuilder: (context, i) {
-                        return ProductGridCard(
-                          product: products[i],
-                          onTap: () => widget.onTap(products[i]),
-                        );
-                      },
-                    ),
+                  ...productGridSlivers(
+                    products: products,
+                    state: currentState,
+                    onTap: widget.onTap,
+                    loadingColor: t.textTertiary,
                   ),
-                if (currentState.isLoading &&
-                    currentState.hasMore &&
-                    products.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                          child:
-                              CircularProgressIndicator(color: t.textTertiary)),
-                    ),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ],
           ),

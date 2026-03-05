@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
 import '../models/product.dart';
 import '../models/sort_option.dart';
+import '../utils/hive_helper.dart';
 
 // ── 타입 ──
 
@@ -66,11 +68,59 @@ abstract class PaginatedProductsNotifier
   int _refreshGen = 0;
 
   PaginatedProductsNotifier() : super(const ProductListState()) {
-    fetchPage();
+    _initWithCache();
+  }
+
+  /// SWR: 캐시에서 즉시 표시 → Firestore로 백그라운드 갱신
+  Future<void> _initWithCache() async {
+    final cacheKey = localCacheKey;
+    if (cacheKey != null) {
+      try {
+        final box = await getOrOpenBox<String>(HiveBoxes.feedCache);
+        final json = box.get(cacheKey);
+        if (json != null) {
+          final list = (jsonDecode(json) as List)
+              .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
+              .toList();
+          if (list.isNotEmpty) {
+            state = ProductListState(
+              products: list,
+              isLoading: true, // 아직 서버 데이터 로딩 중 표시
+              hasMore: true,
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('[$logTag] cache load error: $e');
+      }
+    }
+    await fetchPage();
+  }
+
+  /// 오버라이드하여 캐시 키 반환 (null이면 캐시 안 함)
+  @protected
+  String? get localCacheKey => null;
+
+  /// 첫 페이지 로드 후 캐시에 저장
+  @protected
+  Future<void> _saveToCache(List<Product> products) async {
+    final cacheKey = localCacheKey;
+    if (cacheKey == null || products.isEmpty) return;
+    try {
+      final box = await getOrOpenBox<String>(HiveBoxes.feedCache);
+      final toSave = products.take(40).map((p) => p.toJson()).toList();
+      await box.put(cacheKey, jsonEncode(toSave));
+    } catch (e) {
+      debugPrint('[$logTag] cache save error: $e');
+    }
   }
 
   @protected
   String get logTag;
+
+  /// false를 반환하면 refresh() 시 랜덤 오프셋 없이 단순 리셋만 수행
+  @protected
+  bool get useRandomOffset => true;
 
   @protected
   Future<Query> buildQuery();
@@ -81,14 +131,36 @@ abstract class PaginatedProductsNotifier
   @protected
   Future<void> onEmptyFirstPage() async {}
 
+  /// Index 에러 시 fallback 쿼리로 자동 전환하는 fetchPage 래퍼
+  @protected
+  Future<void> fetchPageWithIndexFallback(VoidCallback onFallback) async {
+    try {
+      await fetchPage();
+    } catch (e) {
+      if (e.toString().contains('failed-precondition') ||
+          e.toString().contains('requires an index')) {
+        debugPrint('[$logTag] index missing, using fallback');
+        onFallback();
+        state = state.copyWith(isLoading: false);
+        await fetchPage();
+        return;
+      }
+      rethrow;
+    }
+  }
+
   @protected
   Future<void> fetchPage() async {
-    state = state.copyWith(isLoading: true);
+    // 캐시 데이터가 이미 표시 중이면 로딩 스피너 안 보여줌
+    final hasCachedData = state.products.isNotEmpty && state.lastDocument == null;
+    if (!hasCachedData) {
+      state = state.copyWith(isLoading: true);
+    }
 
     try {
       Query query = await buildQuery();
 
-      if (state.lastDocument != null) {
+      if (!hasCachedData && state.lastDocument != null) {
         query = query.startAfterDocument(state.lastDocument!);
       }
 
@@ -102,6 +174,18 @@ abstract class PaginatedProductsNotifier
             catch (_) { return true; }
           })
           .toList();
+
+      // 캐시→서버 갱신: 서버 데이터로 교체
+      if (hasCachedData && page.isNotEmpty) {
+        state = ProductListState(
+          products: page,
+          isLoading: false,
+          hasMore: snapshot.docs.length >= pageSize,
+          lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
+        );
+        _saveToCache(page);
+        return;
+      }
 
       if (page.isEmpty && state.products.isEmpty) {
         await onEmptyFirstPage();
@@ -127,12 +211,18 @@ abstract class PaginatedProductsNotifier
         return;
       }
 
+      final newProducts = [...state.products, ...deduped];
       state = ProductListState(
-        products: [...state.products, ...deduped],
+        products: newProducts,
         isLoading: false,
         hasMore: snapshot.docs.length >= pageSize,
         lastDocument: snapshot.docs.isNotEmpty ? snapshot.docs.last : null,
       );
+
+      // 첫 페이지 로드 시 캐시 저장
+      if (state.lastDocument != null && existingIds.isEmpty) {
+        _saveToCache(newProducts);
+      }
     } catch (e) {
       debugPrint('[$logTag] fetchPage error: $e');
       state = state.copyWith(isLoading: false);
@@ -147,18 +237,21 @@ abstract class PaginatedProductsNotifier
   Future<void> refresh() async {
     final gen = ++_refreshGen;
     wrapped = false;
-    state = state.copyWith(isLoading: true);
 
-    int total;
-    try {
-      total = await countTotal();
-    } catch (e) {
-      debugPrint('[$logTag] countTotal error: $e');
-      total = 0;
+    if (useRandomOffset) {
+      state = state.copyWith(isLoading: true);
+      int total;
+      try {
+        total = await countTotal();
+      } catch (e) {
+        debugPrint('[$logTag] countTotal error: $e');
+        total = 0;
+      }
+      if (gen != _refreshGen) return; // 새 refresh가 시작됨
+      startOffset = total > pageSize ? Random().nextInt(total) : 0;
+    } else {
+      startOffset = 0;
     }
-    if (gen != _refreshGen) return; // 새 refresh가 시작됨
-
-    startOffset = total > pageSize ? Random().nextInt(total) : 0;
 
     state = const ProductListState();
     await fetchPage();
@@ -172,6 +265,9 @@ class HotProductsNotifier extends PaginatedProductsNotifier {
 
   @override
   String get logTag => 'HotProducts';
+
+  @override
+  String? get localCacheKey => 'hot_products';
 
   @override
   Future<Query> buildQuery() async {
@@ -236,6 +332,11 @@ class CategoryProductsNotifier extends PaginatedProductsNotifier {
 
   @override
   String get logTag => 'CategoryProducts';
+
+  @override
+  String? get localCacheKey => filter.subCategory != null
+      ? 'category_${filter.category}_${filter.subCategory}'
+      : 'category_${filter.category}';
 
   @override
   Future<Query> buildQuery() async {
@@ -309,20 +410,8 @@ class CategoryProductsNotifier extends PaginatedProductsNotifier {
   }
 
   @override
-  Future<void> fetchPage() async {
-    try {
-      await super.fetchPage();
-    } catch (e) {
-      if (e.toString().contains('failed-precondition') ||
-          e.toString().contains('requires an index')) {
-        _useFallback = true;
-        state = state.copyWith(isLoading: false);
-        await super.fetchPage();
-        return;
-      }
-      rethrow;
-    }
-  }
+  Future<void> fetchPage() async =>
+      fetchPageWithIndexFallback(() => _useFallback = true);
 
   @override
   Future<void> refresh() async {
@@ -341,6 +430,9 @@ class SourceFilteredProductsNotifier extends PaginatedProductsNotifier {
 
   @override
   String get logTag => 'SourceFiltered(${sources.join(",")})';
+
+  @override
+  String? get localCacheKey => 'source_${sources.join("_")}';
 
   @override
   Future<Query> buildQuery() async {
@@ -374,22 +466,8 @@ class SourceFilteredProductsNotifier extends PaginatedProductsNotifier {
   }
 
   @override
-  Future<void> fetchPage() async {
-    try {
-      await super.fetchPage();
-    } catch (e) {
-      if (!_useFallback &&
-          (e.toString().contains('failed-precondition') ||
-              e.toString().contains('requires an index'))) {
-        debugPrint('[$logTag] index missing, using fallback');
-        _useFallback = true;
-        state = state.copyWith(isLoading: false);
-        await super.fetchPage();
-        return;
-      }
-      rethrow;
-    }
-  }
+  Future<void> fetchPage() async =>
+      fetchPageWithIndexFallback(() => _useFallback = true);
 
   @override
   Future<int> countTotal() async {
@@ -463,32 +541,28 @@ class TimeDealProductsNotifier extends PaginatedProductsNotifier {
   String get logTag => 'TimeDeal';
 
   @override
+  String? get localCacheKey => 'time_deal';
+
+  @override
+  bool get useRandomOffset => false;
+
+  @override
   Future<Query> buildQuery() async {
-    final now = DateTime.now().toIso8601String();
     return FirebaseFirestore.instance
         .collection('products')
-        .where('saleEndDate', isGreaterThan: now)
-        .orderBy('saleEndDate')
+        .where('timeDealFeedOrder', isGreaterThanOrEqualTo: 0)
+        .orderBy('timeDealFeedOrder')
         .limit(PaginatedProductsNotifier.pageSize);
   }
 
   @override
   Future<int> countTotal() async {
-    final now = DateTime.now().toIso8601String();
     final snap = await FirebaseFirestore.instance
         .collection('products')
-        .where('saleEndDate', isGreaterThan: now)
+        .where('timeDealFeedOrder', isGreaterThanOrEqualTo: 0)
         .count()
         .get();
     return snap.count ?? 0;
-  }
-
-  @override
-  Future<void> refresh() async {
-    wrapped = false;
-    startOffset = 0;
-    state = const ProductListState();
-    await fetchPage();
   }
 }
 
@@ -497,6 +571,12 @@ class TimeDealProductsNotifier extends PaginatedProductsNotifier {
 class DropRateSortedNotifier extends PaginatedProductsNotifier {
   @override
   String get logTag => 'DropRateSorted';
+
+  @override
+  String? get localCacheKey => 'drop_rate_sorted';
+
+  @override
+  bool get useRandomOffset => false;
 
   @override
   Future<Query> buildQuery() async {
@@ -515,14 +595,6 @@ class DropRateSortedNotifier extends PaginatedProductsNotifier {
         .count()
         .get();
     return snap.count ?? 0;
-  }
-
-  @override
-  Future<void> refresh() async {
-    wrapped = false;
-    startOffset = 0;
-    state = const ProductListState();
-    await fetchPage();
   }
 }
 
@@ -537,6 +609,9 @@ class CategoryDropRateNotifier extends PaginatedProductsNotifier {
   String get logTag => 'CategoryDropRate($category)';
 
   @override
+  bool get useRandomOffset => false;
+
+  @override
   Future<Query> buildQuery() async {
     return FirebaseFirestore.instance
         .collection('products')
@@ -553,14 +628,6 @@ class CategoryDropRateNotifier extends PaginatedProductsNotifier {
         .count()
         .get();
     return snap.count ?? 0;
-  }
-
-  @override
-  Future<void> refresh() async {
-    wrapped = false;
-    startOffset = 0;
-    state = const ProductListState();
-    await fetchPage();
   }
 }
 
